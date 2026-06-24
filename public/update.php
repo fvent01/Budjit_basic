@@ -114,6 +114,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $actionSuccess = true;
     }
 
+    // Run pending DB migrations
+    if ($action === 'run_migrations') {
+        $actionLabel = 'Run pending migrations';
+        $migOutput   = [];
+        $migErrors   = [];
+
+        // Load config to get DB credentials
+        $cfgVars = readConfig($root);
+        $dbHost  = $cfgVars['DB_HOST'] ?? 'localhost';
+        $dbName  = $cfgVars['DB_NAME'] ?? '';
+        $dbUser  = $cfgVars['DB_USER'] ?? '';
+
+        if (empty($dbName)) {
+            $actionOutput  = 'DB_NAME not set in config.php — cannot run migrations.';
+            $actionSuccess = false;
+        } else {
+            try {
+                $dsn = "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4";
+                $mPdo = new PDO($dsn, $dbUser, '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+                // Ensure migrations table exists
+                $mPdo->exec("CREATE TABLE IF NOT EXISTS migrations (
+                    id        INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    migration VARCHAR(255) NOT NULL UNIQUE,
+                    source    VARCHAR(50)  NOT NULL DEFAULT 'core',
+                    ran_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                // Fetch already-applied migrations
+                $applied = array_column(
+                    $mPdo->query("SELECT migration FROM migrations WHERE source = 'core'")->fetchAll(),
+                    'migration'
+                );
+
+                // Scan config/migrations/*.sql
+                $migDir = $root . '/config/migrations';
+                $files  = is_dir($migDir) ? glob($migDir . '/*.sql') : [];
+                sort($files);
+
+                if (empty($files)) {
+                    $migOutput[] = 'No migration files found in config/migrations/.';
+                } else {
+                    foreach ($files as $file) {
+                        $filename = basename($file);
+                        if (in_array($filename, $applied, true)) {
+                            $migOutput[] = "  ✓ {$filename} (already applied)";
+                            continue;
+                        }
+                        $sql = @file_get_contents($file);
+                        if ($sql === false || trim($sql) === '') {
+                            $migOutput[] = "  ⚠ {$filename} (empty or unreadable — skipped)";
+                            continue;
+                        }
+                        try {
+                            foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) {
+                                if ($stmt !== '') $mPdo->exec($stmt);
+                            }
+                            $mPdo->prepare("INSERT IGNORE INTO migrations (migration, source) VALUES (?, 'core')")
+                                 ->execute([$filename]);
+                            $migOutput[] = "  ✅ {$filename} applied";
+                        } catch (PDOException $me) {
+                            $migErrors[] = "  ❌ {$filename}: " . $me->getMessage();
+                        }
+                    }
+                }
+
+                // Also run pending plugin migrations
+                foreach (glob($root . '/plugins/*/migrations/*.sql') as $pFile) {
+                    $pSlug    = basename(dirname(dirname($pFile)));
+                    $pFilename = basename($pFile);
+                    $pApplied = array_column(
+                        $mPdo->prepare("SELECT migration FROM migrations WHERE source = ?")
+                             ->execute([$pSlug]) ? $mPdo->query("SELECT migration FROM migrations WHERE source = '{$pSlug}'")->fetchAll() : [],
+                        'migration'
+                    );
+                    if (!in_array($pFilename, $pApplied, true)) {
+                        $sql = @file_get_contents($pFile);
+                        try {
+                            if ($sql) {
+                                foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) {
+                                    if ($stmt !== '') $mPdo->exec($stmt);
+                                }
+                                $mPdo->prepare("INSERT IGNORE INTO migrations (migration, source) VALUES (?, ?)")
+                                     ->execute([$pFilename, $pSlug]);
+                                $migOutput[] = "  ✅ [{$pSlug}] {$pFilename} applied";
+                            }
+                        } catch (PDOException $me) {
+                            $migErrors[] = "  ❌ [{$pSlug}] {$pFilename}: " . $me->getMessage();
+                        }
+                    }
+                }
+
+                $actionOutput  = implode("\n", array_merge($migOutput, $migErrors));
+                $actionSuccess = empty($migErrors);
+
+            } catch (PDOException $e) {
+                $actionOutput  = 'DB connection failed: ' . $e->getMessage();
+                $actionSuccess = false;
+            }
+        }
+    }
+
     // Redirect back to avoid re-POST on refresh
     $qs = http_build_query([
         'done'    => $action,
@@ -196,6 +298,51 @@ if (file_exists($root . '/config/config.php')) {
     } catch (PDOException $e) {
         $dbStatus  = false;
         $dbMessage = $e->getMessage();
+    }
+}
+
+// ── Section 6: DB Migrations ──────────────────────────────────
+$migTableExists  = false;
+$pendingMigs     = [];
+$appliedMigs     = [];
+
+if ($dbStatus === true) {
+    try {
+        $pdo->exec("SET time_zone = '+00:00'"); // suppress warnings
+        // Check if migrations table exists
+        $chk = $pdo->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = 'migrations'"
+        )->fetchColumn();
+        $migTableExists = ((int)$chk) > 0;
+
+        if ($migTableExists) {
+            $appliedMigs = array_column(
+                $pdo->query("SELECT migration, source, ran_at FROM migrations ORDER BY ran_at ASC")->fetchAll(),
+                null, 'migration'
+            );
+
+            // Core migrations dir
+            $migDir = $root . '/config/migrations';
+            if (is_dir($migDir)) {
+                foreach (glob($migDir . '/*.sql') as $f) {
+                    $fn = basename($f);
+                    if (!isset($appliedMigs[$fn])) {
+                        $pendingMigs[] = ['file' => $fn, 'source' => 'core'];
+                    }
+                }
+            }
+            // Plugin migration dirs
+            foreach (glob($root . '/plugins/*/migrations/*.sql') as $f) {
+                $fn    = basename($f);
+                $pSlug = basename(dirname(dirname($f)));
+                if (!isset($appliedMigs[$fn])) {
+                    $pendingMigs[] = ['file' => $fn, 'source' => $pSlug];
+                }
+            }
+        }
+    } catch (PDOException $e) {
+        // migrations table not readable — treat as not existing
     }
 }
 
@@ -448,7 +595,83 @@ if (is_dir($backupDir)) {
     </div>
   </div>
 
-  <!-- ── 6. Backups ────────────────────────────────────────── -->
+  <!-- ── 6. DB Migrations ─────────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <h2>🗃️ Database Migrations</h2>
+      <?php if (!$migTableExists): ?>
+        <span class="badge badge-warn">Not set up</span>
+      <?php elseif (!empty($pendingMigs)): ?>
+        <span class="badge badge-warn"><?= count($pendingMigs) ?> pending</span>
+      <?php else: ?>
+        <span class="badge badge-ok">Up to date</span>
+      <?php endif; ?>
+    </div>
+    <div class="card-body">
+      <?php if ($dbStatus !== true): ?>
+        <p class="section-note">Database not connected — migration check skipped.</p>
+
+      <?php elseif (!$migTableExists): ?>
+        <div class="status-bar status-warn">
+          ⚠ The <code>migrations</code> tracking table does not exist yet.
+          Run migrations to create it (will also run any pending .sql files in <code>config/migrations/</code>).
+        </div>
+        <form method="POST">
+          <div class="actions">
+            <button name="action" value="run_migrations" class="btn btn-primary">🗃 Run Migrations</button>
+          </div>
+        </form>
+
+      <?php else: ?>
+        <?php if (!empty($pendingMigs)): ?>
+          <div class="status-bar status-warn">
+            ⚠ <?= count($pendingMigs) ?> migration<?= count($pendingMigs) !== 1 ? 's' : '' ?> pending.
+          </div>
+          <table class="backup-table" style="margin-bottom:12px;">
+            <thead><tr><th>File</th><th>Source</th><th>Status</th></tr></thead>
+            <tbody>
+              <?php foreach ($pendingMigs as $m): ?>
+                <tr>
+                  <td><?= htmlspecialchars($m['file']) ?></td>
+                  <td><?= htmlspecialchars($m['source']) ?></td>
+                  <td><span class="badge badge-warn">Pending</span></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+          <form method="POST">
+            <div class="actions">
+              <button name="action" value="run_migrations" class="btn btn-primary">▶ Run Pending Migrations</button>
+            </div>
+          </form>
+        <?php else: ?>
+          <p class="section-note">All migrations have been applied.</p>
+          <?php if (!empty($appliedMigs)): ?>
+            <details style="margin-top:10px;">
+              <summary style="font-size:12px;color:#6b7280;cursor:pointer;">Show applied migrations (<?= count($appliedMigs) ?>)</summary>
+              <table class="backup-table" style="margin-top:8px;">
+                <thead><tr><th>File</th><th>Source</th><th>Applied</th></tr></thead>
+                <tbody>
+                  <?php foreach ($appliedMigs as $m): ?>
+                    <tr>
+                      <td><?= htmlspecialchars($m['migration']) ?></td>
+                      <td><?= htmlspecialchars($m['source']) ?></td>
+                      <td><?= htmlspecialchars($m['ran_at']) ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </details>
+          <?php endif; ?>
+          <form method="POST" style="margin-top:10px;">
+            <button name="action" value="run_migrations" class="btn btn-secondary btn-sm">↺ Re-check migrations</button>
+          </form>
+        <?php endif; ?>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- ── 7. Backups ────────────────────────────────────────── -->
   <div class="card">
     <div class="card-head">
       <h2>💾 Backups</h2>

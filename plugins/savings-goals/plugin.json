@@ -1,0 +1,15 @@
+{
+    "id": "savings-goals",
+    "name": "Savings Goals",
+    "version": "1.0.0",
+    "description": "Track progress toward financial goals with manual or automatic contributions.",
+    "author": "Budjit",
+    "author_email": "",
+    "homepage": "",
+    "min_budjit_version": "1.0.0",
+    "icon": "ti-piggy-bank",
+    "color": "#1D9E75",
+    "url": "savings-goals",
+    "has_migrations": false,
+    "hooks": ["nav_items", "dashboard_widgets"]
+}

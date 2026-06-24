@@ -23,6 +23,7 @@ require_once CORE_PATH . '/auth/Auth.php';
 require_once CORE_PATH . '/router/Controller.php';
 require_once CORE_PATH . '/router/Router.php';
 require_once CORE_PATH . '/plugins/PluginLoader.php';
+require_once CORE_PATH . '/plugins/PluginInstaller.php';
 
 // Autoloader — finds models and controllers by class name
 spl_autoload_register(function (string $class): void {
@@ -113,8 +114,10 @@ $router->post('/api/categories/{id}/delete',                  'CategoryControlle
 $router->post('/api/categories/{id}/toggle-visibility',       'CategoryController@toggleVisibility');
 
 // ── Plugin admin ──────────────────────────────────────────────
-$router->get( '/plugins',        'PluginController@index');
-$router->post('/plugins/toggle', 'PluginController@toggle');
+$router->get(  '/plugins',           'PluginController@index');
+$router->post( '/plugins/toggle',    'PluginController@toggle');
+$router->post( '/plugins/install',   'PluginController@install');
+$router->post( '/plugins/uninstall', 'PluginController@uninstall');
 
 // ── Boot plugins (registers their routes + hooks) ─────────────
 PluginLoader::boot($router);

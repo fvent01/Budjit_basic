@@ -242,10 +242,25 @@ CREATE TABLE recurring_expenses (
 --  Plugins registry
 -- ------------------------------------------------------------
 CREATE TABLE plugins (
+    id           INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    slug         VARCHAR(100) NOT NULL UNIQUE,
+    name         VARCHAR(150) NOT NULL,
+    version      VARCHAR(20)  NOT NULL DEFAULT '1.0.0',
+    author       VARCHAR(150),
+    homepage     VARCHAR(500),
+    is_enabled   TINYINT(1)   NOT NULL DEFAULT 0,
+    is_third_party TINYINT(1) NOT NULL DEFAULT 0,
+    installed_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+--  Migrations tracker
+--  Records which .sql migration files have been applied.
+-- ------------------------------------------------------------
+CREATE TABLE migrations (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    slug        VARCHAR(100) NOT NULL UNIQUE,
-    name        VARCHAR(150) NOT NULL,
-    version     VARCHAR(20)  NOT NULL DEFAULT '1.0.0',
-    is_enabled  TINYINT(1)   NOT NULL DEFAULT 0,
-    installed_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    migration   VARCHAR(255) NOT NULL UNIQUE,   -- filename, e.g. "20260101_001_add_indexes.sql"
+    source      VARCHAR(50)  NOT NULL DEFAULT 'core', -- 'core' or plugin slug
+    ran_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

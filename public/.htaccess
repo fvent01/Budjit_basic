@@ -4,7 +4,7 @@ Options -MultiViews
 RewriteEngine On
 
 # Deny access to sensitive directories
-RewriteRule ^(app|core|config|storage|plugins)/ - [F,L]
+RewriteRule ^(app|core|config|storage)/ - [F,L]
 
 # Skip existing files and directories
 RewriteCond %{REQUEST_FILENAME} !-f

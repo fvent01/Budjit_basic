@@ -1,0 +1,15 @@
+{
+    "id": "debt-tracker",
+    "name": "Debt Payoff Tracker",
+    "version": "1.0.0",
+    "description": "Snowball strategy debt tracker — smallest balance first.",
+    "author": "Budjit",
+    "author_email": "",
+    "homepage": "",
+    "min_budjit_version": "1.0.0",
+    "icon": "ti-credit-card-off",
+    "color": "#E24B4A",
+    "url": "debt-tracker",
+    "has_migrations": false,
+    "hooks": ["nav_items", "dashboard_widgets"]
+}

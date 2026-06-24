@@ -1,0 +1,15 @@
+{
+    "id": "calendar-reminders",
+    "name": "Calendar & Bill Reminders",
+    "version": "1.0.0",
+    "description": "Monthly calendar view with in-app, email, and push notifications.",
+    "author": "Budjit",
+    "author_email": "",
+    "homepage": "",
+    "min_budjit_version": "1.0.0",
+    "icon": "ti-calendar-event",
+    "color": "#EF9F27",
+    "url": "calendar",
+    "has_migrations": false,
+    "hooks": ["nav_items"]
+}

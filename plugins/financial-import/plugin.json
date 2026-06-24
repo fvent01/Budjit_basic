@@ -1,0 +1,15 @@
+{
+    "id": "financial-import",
+    "name": "Financial Import",
+    "version": "1.0.0",
+    "description": "Unified import: Plaid bank sync, CSV, and Excel uploads with deduplication.",
+    "author": "Budjit",
+    "author_email": "",
+    "homepage": "",
+    "min_budjit_version": "1.0.0",
+    "icon": "ti-arrows-exchange",
+    "color": "#7F77DD",
+    "url": "import",
+    "has_migrations": false,
+    "hooks": ["nav_items", "dashboard_widgets"]
+}

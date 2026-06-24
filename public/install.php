@@ -1,89 +1,334 @@
 <?php
 // ============================================================
-//  Budjit — Web Installer
-//  Accessible when vendor/autoload.php is missing.
-//  Navigate to: http://localhost/budjit/public/install.php
+//  Budjit — First-Run Install Wizard
+//  Guides a new installation through:
+//    Step 1: Requirements check
+//    Step 2: Database configuration
+//    Step 3: Application setup (admin user, app name, BASE_URL)
+//    Runs: write config, create schema, seed admin
+//  Navigate to: http://your-server/budjit/public/install.php
 // ============================================================
 
-$root            = dirname(__DIR__);
-$vendorAutoload  = $root . '/vendor/autoload.php';
-$composerJson    = $root . '/composer.json';
+define('BUDJIT_INSTALLER', true);
 
-$alreadyInstalled = file_exists($vendorAutoload);
+$root              = dirname(__DIR__);
+$configFile        = $root . '/config/config.php';
+$schemaFile        = $root . '/config/schema.sql';
+$pluginsSchemaFile = $root . '/config/plugins_schema.sql';
+
+// ── Check if already installed ────────────────────────────────
+function isAlreadyInstalled(string $configFile): bool
+{
+    if (!file_exists($configFile)) return false;
+    $src = @file_get_contents($configFile);
+    return $src && str_contains($src, "define('INSTALL_COMPLETE', true)");
+}
+
+$alreadyInstalled = isAlreadyInstalled($configFile);
 $forceReinstall   = isset($_GET['force']);
 
-// ── Find Composer ─────────────────────────────────────────────
-function findComposer(string $root): ?string
+// ── Session for carrying state between wizard steps ───────────
+session_name('budjit_installer');
+session_start();
+
+// ── Helpers ───────────────────────────────────────────────────
+
+/** HTML-escape a value. */
+function h(mixed $v): string
 {
-    $candidates = ['composer', 'composer.phar', 'composer.bat'];
-    foreach ($candidates as $cmd) {
-        $out = @shell_exec(escapeshellcmd($cmd) . ' --version 2>&1');
-        if ($out && stripos($out, 'Composer') !== false) {
-            return $cmd;
-        }
-    }
-    // composer.phar in project root
-    $localPhar = $root . '/composer.phar';
-    if (file_exists($localPhar)) {
-        $out = @shell_exec('php ' . escapeshellarg($localPhar) . ' --version 2>&1');
-        if ($out && stripos($out, 'Composer') !== false) {
-            return 'php ' . escapeshellarg($localPhar);
-        }
-    }
-    return null;
+    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-// ── Pre-flight checks ─────────────────────────────────────────
-$composerCmd = findComposer($root);
+/** Auto-detect BASE_URL from the current request. */
+function detectBaseUrl(): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/install.php';
+    $dir    = rtrim(dirname($script), '/');
+    return $scheme . '://' . $host . $dir;
+}
 
-$checks = [
-    ['label' => 'PHP &ge; 8.0',   'ok' => version_compare(PHP_VERSION, '8.0.0', '>='), 'detail' => PHP_VERSION],
-    ['label' => 'composer.json',  'ok' => file_exists($composerJson),                  'detail' => $composerJson],
-    ['label' => 'Composer',       'ok' => (bool)$composerCmd,                           'detail' => $composerCmd ?? 'Not found — see below'],
-];
-foreach (['openssl', 'curl', 'mbstring', 'json', 'gmp'] as $ext) {
+/** Generate a VAPID EC key pair (P-256). Requires ext-openssl. */
+function generateVapidKeys(): ?array
+{
+    if (!extension_loaded('openssl')) return null;
+    $key = openssl_pkey_new([
+        'curve_name'       => 'prime256v1',
+        'private_key_type' => OPENSSL_KEYTYPE_EC,
+    ]);
+    if (!$key) return null;
+    $details = openssl_pkey_get_details($key);
+    if (!$details || !isset($details['ec']['d'])) return null;
+
+    // Public key: DER-encoded uncompressed point — last 65 bytes
+    $pubPem = $details['key'];
+    $pubDer = base64_decode(str_replace(["\n", '-----BEGIN PUBLIC KEY-----', '-----END PUBLIC KEY-----'], '', $pubPem));
+    $pubRaw = substr($pubDer, -65);
+
+    return [
+        'public'  => rtrim(strtr(base64_encode($pubRaw),          '+/', '-_'), '='),
+        'private' => rtrim(strtr(base64_encode($details['ec']['d']), '+/', '-_'), '='),
+    ];
+}
+
+/** Generate a 256-bit random encryption key (base64 encoded). */
+function generateEncryptionKey(): string
+{
+    return base64_encode(random_bytes(32));
+}
+
+/** Execute a .sql file against a PDO connection (splits on ";"). */
+function runSqlFile(PDO $pdo, string $path): void
+{
+    $sql = file_get_contents($path);
+    foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) {
+        if ($stmt !== '') {
+            $pdo->exec($stmt);
+        }
+    }
+}
+
+/**
+ * Write config.php from a template.
+ * All user-supplied values are addslashes()-escaped before insertion.
+ */
+function writeConfigFile(string $configFile, array $v): void
+{
+    $tpl = <<<'PHP'
+<?php
+// ============================================================
+//  Budjit — Application Configuration
+//  Generated by installer on %%DATE%%
+// ============================================================
+
+define('APP_NAME',         '%%APP_NAME%%');
+define('APP_VERSION',      '1.0.0');
+define('APP_ENV',          '%%APP_ENV%%');
+define('INSTALL_COMPLETE', true);
+
+// Base URL — no trailing slash
+define('BASE_URL', '%%BASE_URL%%');
+
+// Absolute paths (derived from this file's location)
+define('ROOT_PATH',    dirname(__DIR__));
+define('APP_PATH',     ROOT_PATH . '/app');
+define('CORE_PATH',    ROOT_PATH . '/core');
+define('PUBLIC_PATH',  ROOT_PATH . '/public');
+define('STORAGE_PATH', ROOT_PATH . '/storage');
+define('PLUGIN_PATH',  ROOT_PATH . '/plugins');
+
+// ── Session ───────────────────────────────────────────────────
+define('SESSION_NAME',     'budjit_session');
+define('SESSION_LIFETIME', 7200);  // 2 hours
+
+// ── Database ─────────────────────────────────────────────────
+define('DB_HOST',    '%%DB_HOST%%');
+define('DB_PORT',    %%DB_PORT%%);
+define('DB_NAME',    '%%DB_NAME%%');
+define('DB_USER',    '%%DB_USER%%');
+define('DB_PASS',    '%%DB_PASS%%');
+define('DB_CHARSET', 'utf8mb4');
+
+// ── Web Push / VAPID ─────────────────────────────────────────
+define('VAPID_PUBLIC_KEY',  '%%VAPID_PUBLIC%%');
+define('VAPID_PRIVATE_KEY', '%%VAPID_PRIVATE%%');
+define('VAPID_SUBJECT',     'mailto:%%VAPID_EMAIL%%');
+
+// ── Encryption key (for storing sensitive tokens at rest) ─────
+// Never commit this value to version control.
+define('PLAID_ENCRYPTION_KEY', '%%ENCRYPTION_KEY%%');
+
+// ── Plaid (optional — fill in if using bank sync) ─────────────
+define('PLAID_CLIENT_ID',  '%%PLAID_CLIENT_ID%%');
+define('PLAID_SECRET',     '%%PLAID_SECRET%%');
+define('PLAID_ENV',        '%%PLAID_ENV%%');
+define('PLAID_PUBLIC_KEY', '');
+define('PLAID_BASE_URL',   'https://' . PLAID_ENV . '.plaid.com');
+define('PLAID_INITIAL_DAYS', 180);
+PHP;
+
+    $tpl = str_replace([
+        '%%DATE%%',           '%%APP_NAME%%',        '%%APP_ENV%%',
+        '%%BASE_URL%%',       '%%DB_HOST%%',         '%%DB_PORT%%',
+        '%%DB_NAME%%',        '%%DB_USER%%',         '%%DB_PASS%%',
+        '%%VAPID_PUBLIC%%',   '%%VAPID_PRIVATE%%',   '%%VAPID_EMAIL%%',
+        '%%ENCRYPTION_KEY%%', '%%PLAID_CLIENT_ID%%', '%%PLAID_SECRET%%',
+        '%%PLAID_ENV%%',
+    ], [
+        date('Y-m-d H:i:s'),
+        addslashes($v['app_name']),
+        addslashes($v['app_env']),
+        addslashes($v['base_url']),
+        addslashes($v['db_host']),
+        (int)($v['db_port'] ?: 3306),
+        addslashes($v['db_name']),
+        addslashes($v['db_user']),
+        addslashes($v['db_pass']),
+        $v['vapid_public'],
+        $v['vapid_private'],
+        addslashes($v['admin_email']),
+        $v['encryption_key'],
+        addslashes($v['plaid_client_id'] ?? ''),
+        addslashes($v['plaid_secret']    ?? ''),
+        addslashes($v['plaid_env']       ?? 'sandbox'),
+    ], $tpl);
+
+    file_put_contents($configFile, $tpl);
+}
+
+// ── Requirements check ────────────────────────────────────────
+$reqChecks = [];
+$reqChecks[] = ['label' => 'PHP &ge; 8.0',     'ok' => version_compare(PHP_VERSION, '8.0.0', '>='), 'detail' => PHP_VERSION];
+$reqChecks[] = ['label' => 'composer.json',     'ok' => file_exists($root . '/composer.json'),       'detail' => 'Found'];
+foreach (['openssl', 'curl', 'mbstring', 'json', 'gmp', 'pdo', 'pdo_mysql'] as $ext) {
     $ok = extension_loaded($ext);
-    $checks[] = ['label' => "ext-{$ext}", 'ok' => $ok, 'detail' => $ok ? 'loaded' : 'MISSING'];
+    $reqChecks[] = ['label' => "ext-{$ext}", 'ok' => $ok, 'detail' => $ok ? 'loaded' : 'MISSING'];
 }
+// zip is optional but needed for plugin installation
+$zipOk = extension_loaded('zip');
+$reqChecks[] = ['label' => 'ext-zip', 'ok' => $zipOk, 'detail' => $zipOk ? 'loaded' : 'Missing (needed for plugin install)', 'optional' => true];
+$reqChecks[] = ['label' => 'config/ writable',  'ok' => is_writable($root . '/config'), 'detail' => 'Required for config.php'];
+$storageOk = is_writable($root . '/storage') || (!is_dir($root . '/storage') && is_writable($root));
+$reqChecks[] = ['label' => 'storage/ writable', 'ok' => $storageOk, 'detail' => 'Required for logs & backups', 'optional' => true];
 
-$preflight  = array_reduce($checks, fn($carry, $c) => $carry && $c['ok'], true);
-$canInstall = $preflight;
+$reqPass  = array_reduce($reqChecks, fn($c, $r) => $c && ($r['ok'] || !empty($r['optional'])), true);
+$reqFatal = array_filter($reqChecks, fn($r) => !$r['ok'] && empty($r['optional']));
 
-// ── Run install ───────────────────────────────────────────────
-$output  = '';
-$success = false;
-$error   = '';
+// ── Step routing ──────────────────────────────────────────────
+$stepRaw = $_GET['step'] ?? '1';
+$step    = is_numeric($stepRaw) ? (int)$stepRaw : 0;
+$errors  = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'install') {
-    if (!$canInstall) {
-        $error = 'Pre-flight checks failed. Fix the issues above before installing.';
-    } elseif (!function_exists('shell_exec')) {
-        $error = 'shell_exec() is disabled on this server. Run <code>composer install</code> from the command line instead.';
-    } else {
-        $cmd    = 'cd ' . escapeshellarg($root) . ' && ' . $composerCmd . ' install --no-interaction --no-ansi 2>&1';
-        $output = shell_exec($cmd) ?? 'No output captured.';
-        if (file_exists($vendorAutoload)) {
-            $success = true;
-        } else {
-            $error = 'composer install completed but vendor/autoload.php was not created. See output above.';
+// ── POST: Step 2 — validate DB + store in session ─────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
+    $dbHost   = trim($_POST['db_host'] ?? 'localhost');
+    $dbPort   = (int)($_POST['db_port'] ?? 3306);
+    $dbName   = trim($_POST['db_name'] ?? '');
+    $dbUser   = trim($_POST['db_user'] ?? '');
+    $dbPass   = $_POST['db_pass'] ?? '';
+    $createDb = !empty($_POST['create_db']);
+
+    if (empty($dbName)) $errors[] = 'Database name is required.';
+    if (empty($dbUser)) $errors[] = 'Database user is required.';
+
+    if (empty($errors)) {
+        try {
+            // Connect without selecting a DB so we can CREATE it if needed
+            $testDsn = "mysql:host={$dbHost};port={$dbPort};charset=utf8mb4";
+            $testPdo = new PDO($testDsn, $dbUser, $dbPass, [
+                PDO::ATTR_TIMEOUT    => 5,
+                PDO::ATTR_ERRMODE    => PDO::ERRMODE_EXCEPTION,
+            ]);
+
+            if ($createDb) {
+                $testPdo->exec(
+                    "CREATE DATABASE IF NOT EXISTS `{$dbName}`
+                     CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                );
+            }
+
+            // Verify the target DB is accessible
+            $testPdo->exec("USE `{$dbName}`");
+
+            // Persist to session for Step 3
+            $_SESSION['install_db'] = compact('dbHost', 'dbPort', 'dbName', 'dbUser', 'dbPass');
+
+            header('Location: install.php?step=3');
+            exit;
+
+        } catch (PDOException $e) {
+            $errors[] = 'Database connection failed: ' . $e->getMessage();
         }
     }
 }
 
-// ── Determine base URL for redirect ──────────────────────────
-$configFile = $root . '/config/config.php';
-$baseUrl    = '';
-if (file_exists($configFile)) {
-    // Read BASE_URL without executing full bootstrap
-    $src = file_get_contents($configFile);
-    if (preg_match("/define\s*\(\s*'BASE_URL'\s*,\s*'([^']+)'/", $src, $m)) {
-        $baseUrl = rtrim($m[1], '/');
+// ── POST: Step 3 — run full install ───────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 3) {
+    $appName    = trim($_POST['app_name']    ?? 'Budjit');
+    $appEnv     = ($_POST['app_env'] ?? '') === 'production' ? 'production' : 'development';
+    $baseUrl    = rtrim(trim($_POST['base_url'] ?? detectBaseUrl()), '/');
+    $adminFirst = trim($_POST['admin_first'] ?? '');
+    $adminLast  = trim($_POST['admin_last']  ?? '');
+    $adminEmail = trim($_POST['admin_email'] ?? '');
+    $adminPass  = $_POST['admin_pass']  ?? '';
+    $adminPass2 = $_POST['admin_pass2'] ?? '';
+
+    if (empty($appName))    $errors[] = 'App name is required.';
+    if (empty($baseUrl))    $errors[] = 'Base URL is required.';
+    if (empty($adminFirst)) $errors[] = 'Admin first name is required.';
+    if (empty($adminEmail) || !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'A valid admin email address is required.';
+    }
+    if (strlen($adminPass) < 8)    $errors[] = 'Password must be at least 8 characters.';
+    if ($adminPass !== $adminPass2) $errors[] = 'Passwords do not match.';
+    if (!isset($_SESSION['install_db'])) {
+        $errors[] = 'Session expired — please go back to Step 2.';
+    }
+
+    if (empty($errors)) {
+        $db = $_SESSION['install_db'];
+        try {
+            $dsn = "mysql:host={$db['dbHost']};port={$db['dbPort']};dbname={$db['dbName']};charset=utf8mb4";
+            $pdo = new PDO($dsn, $db['dbUser'], $db['dbPass'], [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+            ]);
+
+            if (!file_exists($schemaFile)) throw new Exception('config/schema.sql not found.');
+            runSqlFile($pdo, $schemaFile);
+
+            if (file_exists($pluginsSchemaFile)) {
+                runSqlFile($pdo, $pluginsSchemaFile);
+            }
+
+            foreach (['schema.sql','plugins_schema.sql','migration_categories.sql','migration_financial_import.sql'] as $ran) {
+                $pdo->prepare("INSERT IGNORE INTO migrations (migration, source) VALUES (?, 'core')")->execute([$ran]);
+            }
+
+            $hash = password_hash($adminPass, PASSWORD_BCRYPT, ['cost' => 12]);
+            $pdo->prepare(
+                "INSERT INTO users (role_id, first_name, last_name, email, password_hash)
+                 VALUES (1, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), role_id = 1"
+            )->execute([$adminFirst, $adminLast ?: '', $adminEmail, $hash]);
+
+            $vapid  = generateVapidKeys() ?? ['public' => '', 'private' => ''];
+            $encKey = generateEncryptionKey();
+
+            writeConfigFile($configFile, [
+                'app_name' => $appName, 'app_env' => $appEnv, 'base_url' => $baseUrl,
+                'db_host'  => $db['dbHost'], 'db_port' => $db['dbPort'],
+                'db_name'  => $db['dbName'], 'db_user' => $db['dbUser'], 'db_pass' => $db['dbPass'],
+                'vapid_public' => $vapid['public'], 'vapid_private' => $vapid['private'],
+                'admin_email' => $adminEmail, 'encryption_key' => $encKey,
+                'plaid_client_id' => '', 'plaid_secret' => '', 'plaid_env' => 'sandbox',
+            ]);
+
+            foreach (['logs','backups','cron'] as $dir) { @mkdir($root.'/storage/'.$dir, 0755, true); }
+
+            $_SESSION = [];
+            session_destroy();
+            header('Location: install.php?step=done&url='.urlencode($baseUrl));
+            exit;
+
+        } catch (Exception $e) {
+            $errors[] = 'Installation failed: ' . $e->getMessage();
+            error_log('Budjit install error: ' . $e->getMessage());
+        }
     }
 }
-if (!$baseUrl) {
-    $scheme  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host    = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $baseUrl = $scheme . '://' . $host . '/budjit/public';
+
+// ── Prefill helpers ───────────────────────────────────────────
+$defaultBaseUrl  = detectBaseUrl();
+$composerReady   = file_exists($root . '/vendor/autoload.php');
+$existingBaseUrl = '';
+if (file_exists($configFile)) {
+    $cfgSrc = @file_get_contents($configFile);
+    if ($cfgSrc && preg_match("/define\s*\(\s*'BASE_URL'\s*,\s*'([^']+)'/", $cfgSrc, $m)) {
+        $existingBaseUrl = $m[1];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -93,120 +338,343 @@ if (!$baseUrl) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Budjit — Installer</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; color: #1a1d23; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; }
-    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,.08); width: 100%; max-width: 640px; overflow: hidden; }
-    .card-head { background: #1a1d23; padding: 24px 28px; }
-    .card-head h1 { color: #fff; font-size: 20px; font-weight: 700; }
-    .card-head p  { color: #9ca3af; font-size: 13px; margin-top: 4px; }
-    .card-body { padding: 24px 28px; }
-    .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; margin: 20px 0 10px; }
-    .check-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; margin-bottom: 4px; background: #f9fafb; border: 1px solid #e5e7eb; }
-    .check-label { flex: 1; font-size: 13px; font-weight: 500; }
-    .check-detail { font-size: 12px; color: #6b7280; font-family: monospace; }
-    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-    .badge-ok  { background: #d1fae5; color: #065f46; }
-    .badge-fail { background: #fee2e2; color: #991b1b; }
-    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; transition: opacity .15s; }
-    .btn:hover { opacity: .88; }
-    .btn-primary  { background: #16a34a; color: #fff; }
-    .btn-secondary { background: #e5e7eb; color: #374151; }
-    .btn-disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; pointer-events: none; }
-    .actions { display: flex; gap: 10px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
-    pre { background: #0f172a; color: #94a3b8; font-size: 12px; line-height: 1.6; padding: 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; margin-top: 16px; max-height: 320px; overflow-y: auto; }
-    .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-top: 16px; }
-    .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-    .alert-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .alert-info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
-    .composer-help { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #92400e; margin-top: 12px; line-height: 1.6; }
-    .composer-help code { background: #fef3c7; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
-    a { color: #16a34a; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f5f7;color:#1a1d23;min-height:100vh;padding:32px 16px}
+    .wrap{max-width:680px;margin:0 auto}
+    .installer-head{margin-bottom:24px}
+    .installer-head h1{font-size:22px;font-weight:700}
+    .installer-head p{color:#6b7280;font-size:13px;margin-top:4px}
+    .stepper{display:flex;margin-bottom:24px}
+    .step-item{flex:1;display:flex;flex-direction:column;align-items:center;position:relative}
+    .step-item::before{content:'';position:absolute;top:14px;left:-50%;right:50%;height:2px;background:#e5e7eb;z-index:0}
+    .step-item:first-child::before{display:none}
+    .step-dot{width:28px;height:28px;border-radius:50%;background:#e5e7eb;color:#6b7280;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:1;position:relative}
+    .step-label{font-size:11px;color:#6b7280;margin-top:5px;text-align:center}
+    .step-item.active .step-dot{background:#16a34a;color:#fff}
+    .step-item.done   .step-dot{background:#d1fae5;color:#065f46}
+    .step-item.done::before,.step-item.active::before{background:#16a34a}
+    .card{background:#fff;border-radius:12px;box-shadow:0 1px 8px rgba(0,0,0,.07);margin-bottom:16px;overflow:hidden}
+    .card-head{padding:16px 22px;border-bottom:1px solid #e5e7eb;background:#f9fafb;display:flex;align-items:center;justify-content:space-between}
+    .card-head h2{font-size:15px;font-weight:600}
+    .card-body{padding:20px 22px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .form-group{margin-bottom:14px}
+    .form-label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px}
+    .form-control{width:100%;padding:8px 11px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;color:#1a1d23;background:#fff}
+    .form-control:focus{outline:none;border-color:#16a34a;box-shadow:0 0 0 2px #d1fae5}
+    .form-hint{font-size:11px;color:#6b7280;margin-top:4px}
+    .check-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;margin-bottom:4px;background:#f9fafb;border:1px solid #e5e7eb}
+    .check-label{flex:1;font-size:13px;font-weight:500}
+    .check-detail{font-size:11px;color:#6b7280;font-family:monospace}
+    .badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+    .badge-ok{background:#d1fae5;color:#065f46}
+    .badge-warn{background:#fef3c7;color:#92400e}
+    .badge-fail{background:#fee2e2;color:#991b1b}
+    .alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:14px;line-height:1.5}
+    .alert-error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+    .alert-success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+    .alert-info{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .15s;line-height:1}
+    .btn:hover{opacity:.85}
+    .btn-primary{background:#16a34a;color:#fff}
+    .btn-secondary{background:#fff;color:#374151;border:1px solid #d1d5db}
+    .btn-disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed;pointer-events:none}
+    .btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;flex-wrap:wrap}
+    a{color:#16a34a}
+    code{background:#f3f4f6;padding:1px 5px;border-radius:3px;font-family:monospace;font-size:12px}
+    .note{font-size:12px;color:#6b7280;margin-top:10px;line-height:1.5}
+    hr{border:none;border-top:1px solid #e5e7eb;margin:16px 0}
+    .done-body{text-align:center;padding:40px 28px}
+    .done-icon{font-size:48px;margin-bottom:16px}
+    .done-body h2{font-size:22px;font-weight:700;margin-bottom:8px}
+    .done-body p{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.6}
+    .done-links{font-size:12px;margin-top:16px}
+    .done-links a{margin:0 6px}
+    select.form-control{appearance:auto}
   </style>
 </head>
 <body>
-<div class="card">
-  <div class="card-head">
-    <h1>💰 Budjit — Installer</h1>
-    <p>First-run dependency installer. This page disappears once setup is complete.</p>
+<div class="wrap">
+  <div class="installer-head">
+    <h1>💰 Budjit Installer</h1>
+    <p>Get up and running in a few steps.</p>
   </div>
-  <div class="card-body">
 
-    <?php if ($alreadyInstalled && !$forceReinstall): ?>
-      <div class="alert alert-success">
-        ✅ Dependencies are already installed. <a href="<?= htmlspecialchars($baseUrl) ?>">Open Budjit →</a>
-      </div>
-      <div class="actions">
-        <a href="update.php" class="btn btn-secondary">Run health check / updater →</a>
+<?php if ($alreadyInstalled && !$forceReinstall): ?>
+  <div class="card">
+    <div class="card-head"><h2>✅ Already Installed</h2></div>
+    <div class="card-body">
+      <div class="alert alert-success">Budjit is already installed and configured.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <?php if ($existingBaseUrl): ?>
+          <a href="<?= h($existingBaseUrl) ?>" class="btn btn-primary">Open Budjit →</a>
+        <?php endif; ?>
+        <a href="update.php" class="btn btn-secondary">Health check / updater →</a>
         <a href="install.php?force=1" class="btn btn-secondary" style="font-size:12px;">Force reinstall</a>
       </div>
+    </div>
+  </div>
 
-    <?php else: ?>
+<?php elseif ($stepRaw === 'done'): ?>
+  <div class="card">
+    <div class="card-body done-body">
+      <div class="done-icon">🎉</div>
+      <h2>Installation Complete!</h2>
+      <p>Budjit has been set up and is ready to use.<br>Log in with the admin account you just created.</p>
+      <?php $doneUrl = h($_GET['url'] ?? $defaultBaseUrl); ?>
+      <a href="<?= $doneUrl ?>" class="btn btn-primary" style="font-size:15px;padding:12px 28px;">Open Budjit →</a>
+      <div class="done-links">
+        <a href="update.php">Health check</a> &middot;
+        <a href="<?= $doneUrl ?>/plugins">Manage plugins</a>
+      </div>
+    </div>
+  </div>
 
-      <!-- Pre-flight checks -->
-      <div class="section-title">Pre-flight checks</div>
-      <?php foreach ($checks as $c): ?>
+<?php else: ?>
+  <!-- Stepper -->
+  <nav class="stepper">
+    <?php foreach (['Requirements','Database','App Setup'] as $i => $label):
+      $n = $i+1; $cls = ($n<$step)?'done':(($n===$step)?'active':''); ?>
+      <div class="step-item <?= $cls ?>">
+        <div class="step-dot"><?= ($n<$step)?'✓':$n ?></div>
+        <div class="step-label"><?= $label ?></div>
+      </div>
+    <?php endforeach; ?>
+  </nav>
+
+  <?php if (!empty($errors)): ?>
+    <div class="alert alert-error">
+      <?php foreach ($errors as $err): ?><div><?= h($err) ?></div><?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($step === 1): ?>
+  <!-- Step 1: Requirements -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Step 1 — Requirements</h2>
+      <span class="badge <?= $reqPass?'badge-ok':'badge-fail' ?>"><?= $reqPass?'All passed':'Issues found' ?></span>
+    </div>
+    <div class="card-body">
+      <?php foreach ($reqChecks as $c): ?>
         <div class="check-row">
           <span class="check-label"><?= $c['label'] ?></span>
-          <span class="check-detail"><?= htmlspecialchars((string)$c['detail']) ?></span>
-          <span class="badge <?= $c['ok'] ? 'badge-ok' : 'badge-fail' ?>"><?= $c['ok'] ? '✓ OK' : '✗ FAIL' ?></span>
+          <span class="check-detail"><?= h($c['detail']) ?></span>
+          <span class="badge <?= $c['ok']?'badge-ok':(isset($c['optional'])?'badge-warn':'badge-fail') ?>">
+            <?= $c['ok']?'✓ OK':(isset($c['optional'])?'⚠ Optional':'✗ FAIL') ?>
+          </span>
         </div>
       <?php endforeach; ?>
-
-      <?php if (!$composerCmd): ?>
-        <div class="composer-help">
-          <strong>Composer not found on PATH.</strong><br>
-          Option 1 — Download the <a href="https://getcomposer.org/download/" target="_blank">Windows installer</a> and install globally.<br>
-          Option 2 — Download <a href="https://getcomposer.org/composer.phar" target="_blank">composer.phar</a> and place it in <code><?= htmlspecialchars($root) ?></code>. This installer will detect it automatically — then refresh this page.
+      <?php if (!$composerReady): ?>
+        <div class="alert alert-info" style="margin-top:14px;">
+          <strong>Composer dependencies not installed.</strong>
+          After completing this wizard, visit <a href="update.php">update.php</a> and click
+          <strong>composer install</strong>, or run: <code>cd <?= h($root) ?> &amp;&amp; composer install</code>
         </div>
       <?php endif; ?>
+      <div class="btn-row">
+        <a href="<?= $reqPass?'install.php?step=2':'#' ?>"
+           class="btn <?= $reqPass?'btn-primary':'btn-disabled' ?>">Next: Database →</a>
+      </div>
+    </div>
+  </div>
 
-      <hr class="divider">
-
-      <?php if ($success): ?>
-        <div class="alert alert-success">
-          ✅ Installation complete! Redirecting to Budjit…
-          <script>setTimeout(function(){ window.location.href = <?= json_encode($baseUrl) ?>; }, 2000);</script>
+  <?php elseif ($step === 2): ?>
+  <!-- Step 2: Database -->
+  <div class="card">
+    <div class="card-head"><h2>Step 2 — Database Configuration</h2></div>
+    <div class="card-body">
+      <form method="POST" action="install.php?step=2">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Database Host</label>
+            <input type="text" name="db_host" value="<?= h($_POST['db_host']??'localhost') ?>" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Port</label>
+            <input type="number" name="db_port" value="<?= h($_POST['db_port']??'3306') ?>" class="form-control" min="1" max="65535">
+          </div>
         </div>
-        <div class="actions">
-          <a href="<?= htmlspecialchars($baseUrl) ?>" class="btn btn-primary">Open Budjit →</a>
-          <a href="update.php" class="btn btn-secondary">Run health check →</a>
+        <div class="form-group">
+          <label class="form-label">Database Name</label>
+          <input type="text" name="db_name" value="<?= h($_POST['db_name']??'budjit') ?>" class="form-control" required placeholder="budjit">
+          <div class="form-hint">The installer will create this database if you check the box below.</div>
         </div>
-      <?php elseif ($error): ?>
-        <div class="alert alert-error">❌ <?= $error ?></div>
-      <?php endif; ?>
-
-      <?php if ($output): ?>
-        <div class="section-title">Composer output</div>
-        <pre><?= htmlspecialchars($output) ?></pre>
-      <?php endif; ?>
-
-      <?php if (!$success): ?>
-        <div class="alert alert-info" style="margin-top:<?= $output ? '16' : '0' ?>px;">
-          This will run <strong>composer install</strong> in <code><?= htmlspecialchars($root) ?></code> and install all required PHP libraries, including encrypted web-push support.
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Database User</label>
+            <input type="text" name="db_user" value="<?= h($_POST['db_user']??'root') ?>" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Database Password</label>
+            <input type="password" name="db_pass" class="form-control" autocomplete="new-password">
+          </div>
         </div>
-        <form method="POST">
-          <input type="hidden" name="action" value="install">
-          <div class="actions">
-            <button type="submit" class="btn <?= $canInstall ? 'btn-primary' : 'btn-disabled' ?>">
-              ⬇ Install dependencies
-            </button>
-            <?php if ($alreadyInstalled): ?>
-              <a href="<?= htmlspecialchars($baseUrl) ?>" class="btn btn-secondary">Skip (already installed) →</a>
-            <?php endif; ?>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" name="create_db" value="1" <?= !empty($_POST['create_db'])?'checked':'' ?>>
+            Create database if it does not exist
+          </label>
+          <div class="form-hint">Requires CREATE DATABASE privilege.</div>
+        </div>
+        <hr>
+        <div class="btn-row">
+          <a href="install.php?step=1" class="btn btn-secondary">← Back</a>
+          <button type="submit" class="btn btn-primary">Test &amp; Continue →</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <?php elseif ($step === 3): ?>
+  <!-- Step 3: App Setup -->
+  <?php if (!isset($_SESSION['install_db'])): ?>
+    <div class="alert alert-error">Session expired — <a href="install.php?step=2">go back to Step 2</a>.</div>
+  <?php else: ?>
+  <div class="card">
+    <div class="card-head"><h2>Step 3 — Application Setup</h2></div>
+    <div class="card-body">
+      <form method="POST" action="install.php?step=3">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">App Name</label>
+            <input type="text" name="app_name" value="<?= h($_POST['app_name']??'Budjit') ?>" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Environment</label>
+            <select name="app_env" class="form-control">
+              <option value="development" <?= ($_POST['app_env']??'development')!=='production'?'selected':'' ?>>Development</option>
+              <option value="production"  <?= ($_POST['app_env']??'')==='production'?'selected':'' ?>>Production</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Base URL <span style="font-weight:400;color:#6b7280;">(no trailing slash)</span></label>
+          <input type="url" name="base_url" value="<?= h($_POST['base_url']??$defaultBaseUrl) ?>" class="form-control" required>
+          <div class="form-hint">Auto-detected from your current browser request. Edit if incorrect.</div>
+        </div>
+        <hr>
+        <p style="font-size:13px;font-weight:600;margin-bottom:14px;">Administrator Account</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input type="text" name="admin_first" value="<?= h($_POST['admin_first']??'') ?>" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input type="text" name="admin_last" value="<?= h($_POST['admin_last']??'') ?>" class="form-control">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" name="admin_email" value="<?= h($_POST['admin_email']??'') ?>" class="form-control" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="admin_pass" class="form-control" required autocomplete="new-password" minlength="8">
+            <div class="form-hint">Minimum 8 characters.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" name="admin_pass2" class="form-control" required autocomplete="new-password">
+          </div>
+        </div>
+        <hr>
+        <p class="note">VAPID push keys and an encryption key are generated automatically. Configure Plaid bank sync later in <code>config/config.php</code>.</p>
+        <div class="btn-row">
+          <a href="install.php?step=2" class="btn btn-secondary">← Back</a>
+          <button type="submit" class="btn btn-primary">Install Budjit →</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <?php endif; ?>
+  <?php endif; // steps ?>
+<?php endif; // wizard/done/already-installed ?>
+
+</div>
+</body>
+</html>
+ass="card-body">
+        <form method="POST" action="install.php?step=3">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">App Name</label>
+              <input type="text" name="app_name" value="<?= h($_POST['app_name'] ?? 'Budjit') ?>"
+                     class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Environment</label>
+              <select name="app_env" class="form-control">
+                <option value="development" <?= ($_POST['app_env'] ?? 'development') !== 'production' ? 'selected' : '' ?>>Development</option>
+                <option value="production"  <?= ($_POST['app_env'] ?? '') === 'production' ? 'selected' : '' ?>>Production</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Base URL <span style="font-weight:400;color:#6b7280;">(no trailing slash)</span></label>
+            <input type="url" name="base_url" value="<?= h($_POST['base_url'] ?? $defaultBaseUrl) ?>"
+                   class="form-control" required placeholder="http://localhost/budjit/public">
+            <div class="form-hint">Auto-detected from your current browser request. Edit if incorrect.</div>
+          </div>
+
+          <hr>
+          <p style="font-size:13px;font-weight:600;margin-bottom:14px;">Administrator Account</p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">First Name</label>
+              <input type="text" name="admin_first" value="<?= h($_POST['admin_first'] ?? '') ?>"
+                     class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last Name</label>
+              <input type="text" name="admin_last" value="<?= h($_POST['admin_last'] ?? '') ?>"
+                     class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" name="admin_email" value="<?= h($_POST['admin_email'] ?? '') ?>"
+                   class="form-control" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" name="admin_pass" class="form-control" required
+                     autocomplete="new-password" minlength="8">
+              <div class="form-hint">Minimum 8 characters.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm Password</label>
+              <input type="password" name="admin_pass2" class="form-control" required autocomplete="new-password">
+            </div>
+          </div>
+
+          <hr>
+          <p class="note">
+            VAPID push-notification keys and an encryption key will be generated automatically.
+            You can configure Plaid bank-sync credentials later by editing
+            <code>config/config.php</code>.
+          </p>
+
+          <div class="btn-row">
+            <a href="install.php?step=2" class="btn btn-secondary">← Back</a>
+            <button type="submit" class="btn btn-primary">Install Budjit →</button>
           </div>
         </form>
-
-        <hr class="divider">
-        <div class="section-title">Manual install (command line)</div>
-        <pre>cd <?= htmlspecialchars($root) ?>
-composer install</pre>
-        <p style="font-size:12px;color:#6b7280;margin-top:8px;">After running this, refresh the page or navigate to <a href="<?= htmlspecialchars($baseUrl) ?>"><?= htmlspecialchars($baseUrl) ?></a>.</p>
-      <?php endif; ?>
-
+      </div>
+    </div>
     <?php endif; ?>
 
-  </div>
+  <?php endif; // steps ?>
+  <?php endif; // wizard / already installed / done ?>
+
 </div>
 </body>
 </html>

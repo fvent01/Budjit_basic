@@ -1,0 +1,15 @@
+{
+    "id": "recurring-bills",
+    "name": "Recurring Bills & Subscriptions",
+    "version": "1.0.0",
+    "description": "Track all recurring bills and subscriptions in one place.",
+    "author": "Budjit",
+    "author_email": "",
+    "homepage": "",
+    "min_budjit_version": "1.0.0",
+    "icon": "ti-refresh",
+    "color": "#378ADD",
+    "url": "recurring-bills",
+    "has_migrations": false,
+    "hooks": ["nav_items", "dashboard_widgets"]
+}
