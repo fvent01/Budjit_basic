@@ -323,11 +323,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 3) {
 // ── Prefill helpers ───────────────────────────────────────────
 $defaultBaseUrl  = detectBaseUrl();
 $composerReady   = file_exists($root . '/vendor/autoload.php');
-$existingBaseUrl = '';
+$existingBaseUrl = $vapidPublicKey = $vapidPrivateKey = '';
 if (file_exists($configFile)) {
     $cfgSrc = @file_get_contents($configFile);
-    if ($cfgSrc && preg_match("/define\s*\(\s*'BASE_URL'\s*,\s*'([^']+)'/", $cfgSrc, $m)) {
-        $existingBaseUrl = $m[1];
+    if ($cfgSrc) {
+        if (preg_match("/define\s*\(\s*'BASE_URL'\s*,\s*'([^']+)'/", $cfgSrc, $m))         $existingBaseUrl  = $m[1];
+        if (preg_match("/define\s*\(\s*'VAPID_PUBLIC_KEY'\s*,\s*'([^']+)'/", $cfgSrc, $m)) $vapidPublicKey   = $m[1];
+        if (preg_match("/define\s*\(\s*'VAPID_PRIVATE_KEY'\s*,\s*'([^']+)'/", $cfgSrc, $m))$vapidPrivateKey  = $m[1];
     }
 }
 ?>
@@ -336,7 +338,7 @@ if (file_exists($configFile)) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Budjit — Installer</title>
+  <title>Budjit &mdash; Installer</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f5f7;color:#1a1d23;min-height:100vh;padding:32px 16px}
@@ -396,20 +398,19 @@ if (file_exists($configFile)) {
 <body>
 <div class="wrap">
   <div class="installer-head">
-    <h1>💰 Budjit Installer</h1>
+    <h1>&#128176; Budjit Installer</h1>
     <p>Get up and running in a few steps.</p>
   </div>
-
 <?php if ($alreadyInstalled && !$forceReinstall): ?>
   <div class="card">
-    <div class="card-head"><h2>✅ Already Installed</h2></div>
+    <div class="card-head"><h2>&#9989; Already Installed</h2></div>
     <div class="card-body">
       <div class="alert alert-success">Budjit is already installed and configured.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <?php if ($existingBaseUrl): ?>
-          <a href="<?= h($existingBaseUrl) ?>" class="btn btn-primary">Open Budjit →</a>
+          <a href="<?= h($existingBaseUrl) ?>" class="btn btn-primary">Open Budjit &rarr;</a>
         <?php endif; ?>
-        <a href="update.php" class="btn btn-secondary">Health check / updater →</a>
+        <a href="update.php" class="btn btn-secondary">Health check / updater &rarr;</a>
         <a href="install.php?force=1" class="btn btn-secondary" style="font-size:12px;">Force reinstall</a>
       </div>
     </div>
@@ -418,11 +419,11 @@ if (file_exists($configFile)) {
 <?php elseif ($stepRaw === 'done'): ?>
   <div class="card">
     <div class="card-body done-body">
-      <div class="done-icon">🎉</div>
+      <div class="done-icon">&#127881;</div>
       <h2>Installation Complete!</h2>
       <p>Budjit has been set up and is ready to use.<br>Log in with the admin account you just created.</p>
       <?php $doneUrl = h($_GET['url'] ?? $defaultBaseUrl); ?>
-      <a href="<?= $doneUrl ?>" class="btn btn-primary" style="font-size:15px;padding:12px 28px;">Open Budjit →</a>
+      <a href="<?= $doneUrl ?>" class="btn btn-primary" style="font-size:15px;padding:12px 28px;">Open Budjit &rarr;</a>
       <div class="done-links">
         <a href="update.php">Health check</a> &middot;
         <a href="<?= $doneUrl ?>/plugins">Manage plugins</a>
@@ -430,13 +431,43 @@ if (file_exists($configFile)) {
     </div>
   </div>
 
+  <?php if ($vapidPublicKey): ?>
+  <div class="card" style="text-align:left;">
+    <div class="card-head">
+      <h2>&#128273; VAPID Keys</h2>
+      <span style="font-size:11px;color:#6b7280;">Used for web push notifications</span>
+    </div>
+    <div class="card-body">
+      <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">
+        These keys are already saved in <code>config/config.php</code>.
+        Copy and store the <strong>private key</strong> somewhere safe &mdash; it cannot be recovered once you leave this page.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Public Key</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="vpub" value="<?= h($vapidPublicKey) ?>" readonly class="form-control" style="font-family:monospace;font-size:11px;">
+          <button onclick="navigator.clipboard.writeText(document.getElementById('vpub').value)" class="btn btn-secondary" style="white-space:nowrap;flex-shrink:0;">Copy</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Private Key <span style="color:#dc2626;font-weight:700;">&#9888; Keep secret</span></label>
+        <div style="display:flex;gap:6px;">
+          <input type="password" id="vpriv" value="<?= h($vapidPrivateKey) ?>" readonly class="form-control" style="font-family:monospace;font-size:11px;">
+          <button onclick="var f=document.getElementById('vpriv');f.type=f.type==='password'?'text':'password'" class="btn btn-secondary" style="white-space:nowrap;flex-shrink:0;">Show</button>
+          <button onclick="var f=document.getElementById('vpriv');var t=f.type;f.type='text';navigator.clipboard.writeText(f.value);f.type=t;" class="btn btn-secondary" style="white-space:nowrap;flex-shrink:0;">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
+
 <?php else: ?>
   <!-- Stepper -->
   <nav class="stepper">
     <?php foreach (['Requirements','Database','App Setup'] as $i => $label):
       $n = $i+1; $cls = ($n<$step)?'done':(($n===$step)?'active':''); ?>
       <div class="step-item <?= $cls ?>">
-        <div class="step-dot"><?= ($n<$step)?'✓':$n ?></div>
+        <div class="step-dot"><?= ($n<$step)?'&#10003;':$n ?></div>
         <div class="step-label"><?= $label ?></div>
       </div>
     <?php endforeach; ?>
@@ -452,7 +483,7 @@ if (file_exists($configFile)) {
   <!-- Step 1: Requirements -->
   <div class="card">
     <div class="card-head">
-      <h2>Step 1 — Requirements</h2>
+      <h2>Step 1 &mdash; Requirements</h2>
       <span class="badge <?= $reqPass?'badge-ok':'badge-fail' ?>"><?= $reqPass?'All passed':'Issues found' ?></span>
     </div>
     <div class="card-body">
@@ -461,20 +492,20 @@ if (file_exists($configFile)) {
           <span class="check-label"><?= $c['label'] ?></span>
           <span class="check-detail"><?= h($c['detail']) ?></span>
           <span class="badge <?= $c['ok']?'badge-ok':(isset($c['optional'])?'badge-warn':'badge-fail') ?>">
-            <?= $c['ok']?'✓ OK':(isset($c['optional'])?'⚠ Optional':'✗ FAIL') ?>
+            <?= $c['ok']?'&#10003; OK':(isset($c['optional'])?'&#9888; Optional':'&#10007; FAIL') ?>
           </span>
         </div>
       <?php endforeach; ?>
       <?php if (!$composerReady): ?>
         <div class="alert alert-info" style="margin-top:14px;">
           <strong>Composer dependencies not installed.</strong>
-          After completing this wizard, visit <a href="update.php">update.php</a> and click
-          <strong>composer install</strong>, or run: <code>cd <?= h($root) ?> &amp;&amp; composer install</code>
+          Run: <code>cd <?= h($root) ?> &amp;&amp; composer install</code>
+          then refresh this page.
         </div>
       <?php endif; ?>
       <div class="btn-row">
         <a href="<?= $reqPass?'install.php?step=2':'#' ?>"
-           class="btn <?= $reqPass?'btn-primary':'btn-disabled' ?>">Next: Database →</a>
+           class="btn <?= $reqPass?'btn-primary':'btn-disabled' ?>">Next: Database &rarr;</a>
       </div>
     </div>
   </div>
@@ -482,7 +513,7 @@ if (file_exists($configFile)) {
   <?php elseif ($step === 2): ?>
   <!-- Step 2: Database -->
   <div class="card">
-    <div class="card-head"><h2>Step 2 — Database Configuration</h2></div>
+    <div class="card-head"><h2>Step 2 &mdash; Database Configuration</h2></div>
     <div class="card-body">
       <form method="POST" action="install.php?step=2">
         <div class="form-row">
@@ -519,8 +550,8 @@ if (file_exists($configFile)) {
         </div>
         <hr>
         <div class="btn-row">
-          <a href="install.php?step=1" class="btn btn-secondary">← Back</a>
-          <button type="submit" class="btn btn-primary">Test &amp; Continue →</button>
+          <a href="install.php?step=1" class="btn btn-secondary">&larr; Back</a>
+          <button type="submit" class="btn btn-primary">Test &amp; Continue &rarr;</button>
         </div>
       </form>
     </div>
@@ -529,10 +560,10 @@ if (file_exists($configFile)) {
   <?php elseif ($step === 3): ?>
   <!-- Step 3: App Setup -->
   <?php if (!isset($_SESSION['install_db'])): ?>
-    <div class="alert alert-error">Session expired — <a href="install.php?step=2">go back to Step 2</a>.</div>
+    <div class="alert alert-error">Session expired &mdash; <a href="install.php?step=2">go back to Step 2</a>.</div>
   <?php else: ?>
   <div class="card">
-    <div class="card-head"><h2>Step 3 — Application Setup</h2></div>
+    <div class="card-head"><h2>Step 3 &mdash; Application Setup</h2></div>
     <div class="card-body">
       <form method="POST" action="install.php?step=3">
         <div class="form-row">
@@ -551,7 +582,7 @@ if (file_exists($configFile)) {
         <div class="form-group">
           <label class="form-label">Base URL <span style="font-weight:400;color:#6b7280;">(no trailing slash)</span></label>
           <input type="url" name="base_url" value="<?= h($_POST['base_url']??$defaultBaseUrl) ?>" class="form-control" required>
-          <div class="form-hint">Auto-detected from your current browser request. Edit if incorrect.</div>
+          <div class="form-hint">Auto-detected from your current request. Edit if incorrect.</div>
         </div>
         <hr>
         <p style="font-size:13px;font-weight:600;margin-bottom:14px;">Administrator Account</p>
@@ -583,8 +614,8 @@ if (file_exists($configFile)) {
         <hr>
         <p class="note">VAPID push keys and an encryption key are generated automatically. Configure Plaid bank sync later in <code>config/config.php</code>.</p>
         <div class="btn-row">
-          <a href="install.php?step=2" class="btn btn-secondary">← Back</a>
-          <button type="submit" class="btn btn-primary">Install Budjit →</button>
+          <a href="install.php?step=2" class="btn btn-secondary">&larr; Back</a>
+          <button type="submit" class="btn btn-primary">Install Budjit &rarr;</button>
         </div>
       </form>
     </div>
@@ -592,88 +623,6 @@ if (file_exists($configFile)) {
   <?php endif; ?>
   <?php endif; // steps ?>
 <?php endif; // wizard/done/already-installed ?>
-
-</div>
-</body>
-</html>
-ass="card-body">
-        <form method="POST" action="install.php?step=3">
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">App Name</label>
-              <input type="text" name="app_name" value="<?= h($_POST['app_name'] ?? 'Budjit') ?>"
-                     class="form-control" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Environment</label>
-              <select name="app_env" class="form-control">
-                <option value="development" <?= ($_POST['app_env'] ?? 'development') !== 'production' ? 'selected' : '' ?>>Development</option>
-                <option value="production"  <?= ($_POST['app_env'] ?? '') === 'production' ? 'selected' : '' ?>>Production</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Base URL <span style="font-weight:400;color:#6b7280;">(no trailing slash)</span></label>
-            <input type="url" name="base_url" value="<?= h($_POST['base_url'] ?? $defaultBaseUrl) ?>"
-                   class="form-control" required placeholder="http://localhost/budjit/public">
-            <div class="form-hint">Auto-detected from your current browser request. Edit if incorrect.</div>
-          </div>
-
-          <hr>
-          <p style="font-size:13px;font-weight:600;margin-bottom:14px;">Administrator Account</p>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">First Name</label>
-              <input type="text" name="admin_first" value="<?= h($_POST['admin_first'] ?? '') ?>"
-                     class="form-control" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Last Name</label>
-              <input type="text" name="admin_last" value="<?= h($_POST['admin_last'] ?? '') ?>"
-                     class="form-control">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Email Address</label>
-            <input type="email" name="admin_email" value="<?= h($_POST['admin_email'] ?? '') ?>"
-                   class="form-control" required>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Password</label>
-              <input type="password" name="admin_pass" class="form-control" required
-                     autocomplete="new-password" minlength="8">
-              <div class="form-hint">Minimum 8 characters.</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Confirm Password</label>
-              <input type="password" name="admin_pass2" class="form-control" required autocomplete="new-password">
-            </div>
-          </div>
-
-          <hr>
-          <p class="note">
-            VAPID push-notification keys and an encryption key will be generated automatically.
-            You can configure Plaid bank-sync credentials later by editing
-            <code>config/config.php</code>.
-          </p>
-
-          <div class="btn-row">
-            <a href="install.php?step=2" class="btn btn-secondary">← Back</a>
-            <button type="submit" class="btn btn-primary">Install Budjit →</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <?php endif; ?>
-
-  <?php endif; // steps ?>
-  <?php endif; // wizard / already installed / done ?>
 
 </div>
 </body>

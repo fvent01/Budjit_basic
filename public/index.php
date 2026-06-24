@@ -5,16 +5,34 @@
 
 define('BUDJIT', true);
 
-require_once dirname(__DIR__) . '/config/config.php';
+$_root       = dirname(__DIR__);
+$_configFile = $_root . '/config/config.php';
+
+// ── Install guard ─────────────────────────────────────────────
+// Case 1: config.php missing entirely — compute redirect without BASE_URL
+if (!file_exists($_configFile)) {
+    $__base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
+    header('Location: ' . $__base . '/install.php');
+    exit;
+}
+
+require_once $_configFile;
+unset($_configFile);
+
+// Case 2: config exists but install wizard was never completed
+if (!defined('INSTALL_COMPLETE') || !INSTALL_COMPLETE) {
+    header('Location: ' . rtrim(BASE_URL, '/') . '/install.php');
+    exit;
+}
 
 // ── Composer autoloader ───────────────────────────────────────
-$_vendorAutoload = dirname(__DIR__) . '/vendor/autoload.php';
+$_vendorAutoload = $_root . '/vendor/autoload.php';
 if (!file_exists($_vendorAutoload)) {
     header('Location: ' . rtrim(BASE_URL, '/') . '/install.php');
     exit;
 }
 require_once $_vendorAutoload;
-unset($_vendorAutoload);
+unset($_vendorAutoload, $_root);
 
 // Core classes
 require_once CORE_PATH . '/database/Database.php';
