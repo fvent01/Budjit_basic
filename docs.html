@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budjit — Developer Documentation</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --bg-card:     #1a1d27;
+      --bg-code:     #12141e;
+      --border:      #2a2d3e;
+      --text:        #e2e8f0;
+      --text-muted:  #8892a4;
+      --accent:      #1D9E75;
+      --accent-dim:  #1D9E7522;
+      --blue:        #378ADD;
+      --blue-dim:    #378ADD22;
+      --yellow:      #EF9F27;
+      --red:         #E24B4A;
+      --purple:      #7F77DD;
+      --sidebar-w:   260px;
+      --font:        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono:        "Cascadia Code", "Fira Code", "Consolas", monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      overflow-y: auto;
+      padding: 24px 0 40px;
+      z-index: 100;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 20px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo .icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    .sidebar-logo .title { font-weight: 700; font-size: 15px; }
+    .sidebar-logo .sub { font-size: 11px; color: var(--text-muted); }
+
+    .nav-section {
+      padding: 8px 20px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 7px 20px;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-left: 3px solid transparent;
+      transition: color .15s, border-color .15s, background .15s;
+    }
+
+    .sidebar a:hover { color: var(--text); background: #ffffff08; }
+    .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
+
+    /* ── Main content ───────────────────────────────────────────── */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      max-width: 960px;
+      padding: 56px 64px 120px;
+    }
+
+    /* ── Typography ─────────────────────────────────────────────── */
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 32px;
+      margin-bottom: 56px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--accent-dim);
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+    .subtitle { color: var(--text-muted); font-size: 15px; }
+
+    .section { margin-bottom: 72px; }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 24px;
+      scroll-margin-top: 24px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 28px 0 10px;
+    }
+
+    p { color: #c8d0de; margin-bottom: 14px; font-size: 14.5px; }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Code ───────────────────────────────────────────────────── */
+    pre, code {
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    code {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e2a76f;
+    }
+
+    pre {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin: 16px 0 24px;
+      line-height: 1.6;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #abb2bf;
+    }
+
+    /* Syntax highlight helpers */
+    .kw  { color: #c678dd; }
+    .fn  { color: #61afef; }
+    .st  { color: #98c379; }
+    .cm  { color: #5c6370; font-style: italic; }
+    .nb  { color: #e5c07b; }
+    .op  { color: #56b6c2; }
+
+    /* ── Cards / call-outs ──────────────────────────────────────── */
+    .callout {
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .callout .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .callout p { margin: 0; }
+
+    .callout.info    { background: var(--blue-dim);   border-left: 3px solid var(--blue);   }
+    .callout.success { background: var(--accent-dim); border-left: 3px solid var(--accent); }
+    .callout.warning { background: #EF9F2718;         border-left: 3px solid var(--yellow); }
+    .callout.danger  { background: #E24B4A18;         border-left: 3px solid var(--red);    }
+
+    .callout.info .icon    { color: var(--blue);   }
+    .callout.success .icon { color: var(--accent); }
+    .callout.warning .icon { color: var(--yellow); }
+    .callout.danger .icon  { color: var(--red);    }
+
+    /* ── Tables ─────────────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      margin: 16px 0 28px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      background: var(--bg-card);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: #c8d0de;
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #ffffff04; }
+
+    /* ── Directory tree ─────────────────────────────────────────── */
+    .tree {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.8;
+      color: #abb2bf;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .tree .dir  { color: var(--blue); font-weight: 600; }
+    .tree .file { color: #abb2bf; }
+    .tree .note { color: var(--text-muted); }
+
+    /* ── Flow diagrams ──────────────────────────────────────────── */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 20px 0 28px;
+    }
+
+    .flow-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      min-width: 110px;
+    }
+
+    .flow-box.highlight {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .flow-arrow {
+      color: var(--text-muted);
+      padding: 0 8px;
+      font-size: 18px;
+    }
+
+    /* ── Role pills ─────────────────────────────────────────────── */
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .pill-admin  { background: #E24B4A22; color: var(--red); }
+    .pill-parent { background: var(--blue-dim); color: var(--blue); }
+    .pill-viewer { background: #7F77DD22; color: var(--purple); }
+    .pill-get    { background: #1D9E7522; color: var(--accent); }
+    .pill-post   { background: #EF9F2722; color: var(--yellow); }
+
+    /* ── Plugin cards ───────────────────────────────────────────── */
+    .plugin-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .plugin-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .plugin-card .name { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+    .plugin-card .slug { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+    .plugin-card .desc { font-size: 13px; color: #c8d0de; }
+
+    /* ── Mobile ─────────────────────────────────────────────────── */
+    @media (max-width: 800px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 32px 24px 80px; }
+      .plugin-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="icon">💰</div>
+    <div>
+      <div class="title">Budjit Docs</div>
+      <div class="sub">Developer Manual</div>
+    </div>
+  </div>
+
+  <div class="nav-section">Overview</div>
+  <a href="#architecture">Architecture</a>
+  <a href="#structure">Directory Structure</a>
+  <a href="#setup">Local Setup</a>
+
+  <div class="nav-section">Core Systems</div>
+  <a href="#router">Router</a>
+  <a href="#database">Database</a>
+  <a href="#auth">Auth &amp; Sessions</a>
+  <a href="#model">Base Model</a>
+  <a href="#plugins">Plugin System</a>
+
+  <div class="nav-section">Application</div>
+  <a href="#routes">Route Reference</a>
+  <a href="#controllers">Controllers</a>
+  <a href="#views">Views &amp; Layouts</a>
+  <a href="#frontend">Frontend</a>
+
+  <div class="nav-section">Data</div>
+  <a href="#schema">Database Schema</a>
+  <a href="#roles">Roles &amp; Permissions</a>
+
+  <div class="nav-section">Reference</div>
+  <a href="#config">Configuration</a>
+  <a href="#security">Security</a>
+  <a href="#adding">Adding Features</a>
+
+  <div class="nav-section">Related</div>
+  <a href="about.html">ℹ️ About &amp; Info</a>
+  <a href="javascript:history.back()">← Back to App</a>
+</nav>
+
+<!-- ── Main content ────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div class="badge">v1.0.0</div>
+    <h1>Budjit — Developer Manual</h1>
+    <p class="subtitle">Technical reference for developers working on the Budjit self-hosted family budgeting application.</p>
+  </div>
+
+  <!-- ── ARCHITECTURE ──────────────────────────────────────────── -->
+  <section class="section" id="architecture">
+    <h2>Architecture Overview</h2>
+
+    <p>Budjit is a <strong>custom MVC PHP application</strong> with no third-party framework. All HTTP requests enter through a single front controller (<code>public/index.php</code>), which boots the router, loads enabled plugins, and dispatches to the appropriate controller.</p>
+
+    <div class="flow">
+      <div class="flow-box">Browser Request</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Apache / .htaccess</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box highlight">public/index.php</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Router::dispatch()</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Controller</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">Model(s)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">View / JSON</div>
+    </div>
+
+    <h3>Key design decisions</h3>
+    <table>
+      <thead><tr><th>Decision</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>No framework</strong></td>
+          <td>Keeps the dependency surface minimal; everything is traceable by reading a handful of core files.</td>
+        </tr>
+        <tr>
+          <td><strong>Plugin architecture</strong></td>
+          <td>Each optional feature (Savings Goals, Debt Tracker, etc.) lives in its own folder under <code>/plugins</code>. Plugins register their own routes and hooks so the core is never polluted by optional features.</td>
+        </tr>
+        <tr>
+          <td><strong>PDO + prepared statements</strong></td>
+          <td>All database access uses PDO with bound parameters — no raw string interpolation, preventing SQL injection by construction.</td>
+        </tr>
+        <tr>
+          <td><strong>AJAX-first UI</strong></td>
+          <td>Dashboard widget reordering, inline editing, and category management all use <code>fetch()</code> calls to return JSON — no full page reloads for these interactions.</td>
+        </tr>
+        <tr>
+          <td><strong>Python sidecars</strong></td>
+          <td>Compute-heavy parsing tasks (PDF pay stubs via <code>pdfplumber</code>, Excel fallback via <code>openpyxl</code>) run as separate Python processes called from PHP via <code>exec()</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Plaid integration</strong></td>
+          <td>Bank transaction sync uses the Plaid API with cursor-based incremental sync. Access tokens are stored encrypted with AES-256.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── DIRECTORY STRUCTURE ───────────────────────────────────── -->
+  <section class="section" id="structure">
+    <h2>Directory Structure</h2>
+
+    <div class="tree">
+<span class="dir">Budjit/</span>
+├── <span class="dir">app/</span>
+│   ├── <span class="dir">controllers/</span>          <span class="note">← one file per controller</span>
+│   │   ├── AuthController.php
+│   │   ├── DashboardController.php
+│   │   ├── BudgetController.php
+│   │   ├── ExpenseController.php
+│   │   ├── IncomeController.php
+│   │   ├── AnalyticsController.php
+│   │   ├── CategoryController.php
+│   │   ├── SettingsController.php
+│   │   ├── PluginController.php
+│   │   └── ErrorController.php
+│   ├── <span class="dir">models/</span>               <span class="note">← one model per DB table / domain concept</span>
+│   │   ├── UserModel.php
+│   │   ├── BudgetModel.php  /  BudgetItemModel.php
+│   │   ├── ExpenseModel.php
+│   │   ├── IncomeSourceModel.php  /  IncomeEntryModel.php
+│   │   ├── CategoryModel.php
+│   │   ├── SettingsModel.php
+│   │   ├── PlaidService.php  /  PlaidAccountModel.php  /  PlaidSyncService.php
+│   │   └── ...
+│   ├── <span class="dir">views/</span>                <span class="note">← PHP templates, grouped by feature</span>
+│   │   ├── <span class="dir">layouts/</span>          <span class="note">← main.php (authenticated), auth.php (public)</span>
+│   │   ├── <span class="dir">auth/</span>
+│   │   ├── <span class="dir">budget/</span>
+│   │   ├── <span class="dir">expenses/</span>
+│   │   ├── <span class="dir">income/</span>
+│   │   ├── <span class="dir">dashboard/</span>
+│   │   ├── <span class="dir">analytics/</span>
+│   │   ├── <span class="dir">settings/</span>
+│   │   └── ...
+│   └── <span class="dir">services/</span>             <span class="note">← stateless helpers (e.g. ChimePdfParser)</span>
+│
+├── <span class="dir">core/</span>                     <span class="note">← framework kernel, never edit for features</span>
+│   ├── <span class="dir">auth/</span>         Auth.php
+│   ├── <span class="dir">database/</span>     Database.php  (singleton PDO)  ·  Model.php  (base ORM)
+│   ├── <span class="dir">router/</span>       Router.php  ·  Controller.php  (base controller)
+│   └── <span class="dir">plugins/</span>      PluginLoader.php
+│
+├── <span class="dir">config/</span>
+│   ├── config.php            <span class="note">← environment settings &amp; constants</span>
+│   ├── schema.sql            <span class="note">← import this to create the DB</span>
+│   ├── plugins.php           <span class="note">← plugin manifest (slug → meta)</span>
+│   └── *.sql                 <span class="note">← additive migration files</span>
+│
+├── <span class="dir">plugins/</span>                  <span class="note">← self-contained feature modules</span>
+│   ├── <span class="dir">savings-goals/</span>
+│   │   ├── plugin.php        <span class="note">← registers routes + hooks</span>
+│   │   └── <span class="dir">views/</span>widget.php
+│   ├── <span class="dir">debt-tracker/</span>
+│   ├── <span class="dir">recurring-bills/</span>
+│   ├── <span class="dir">bank-import/</span>
+│   ├── <span class="dir">financial-import/</span>
+│   ├── <span class="dir">excel-budget-import/</span>
+│   └── <span class="dir">calendar-reminders/</span>
+│
+├── <span class="dir">public/</span>                   <span class="note">← web root (Apache document root points here)</span>
+│   ├── index.php             <span class="note">← front controller — ALL requests enter here</span>
+│   ├── .htaccess             <span class="note">← rewrites everything to index.php</span>
+│   └── <span class="dir">assets/</span>
+│       ├── css/app.css
+│       └── js/app.js
+│
+└── <span class="dir">storage/</span>
+    └── <span class="dir">cron/</span>  send_reminders.php
+    </div>
+
+    <div class="callout warning">
+      <span class="icon">⚠️</span>
+      <p><strong>Apache document root must be set to <code>/public</code>.</strong> The <code>/app</code>, <code>/core</code>, <code>/config</code>, and <code>/plugins</code> directories are above the web root and are never directly accessible by the browser.</p>
+    </div>
+  </section>
+
+  <!-- ── LOCAL SETUP ───────────────────────────────────────────── -->
+  <section class="section" id="setup">
+    <h2>Local Setup</h2>
+
+    <h3>Requirements</h3>
+    <table>
+      <thead><tr><th>Requirement</th><th>Version</th></tr></thead>
+      <tbody>
+        <tr><td>PHP</td><td>8.1+</td></tr>
+        <tr><td>MySQL / MariaDB</td><td>MySQL 8+ or MariaDB 10.4+</td></tr>
+        <tr><td>Apache</td><td>Any recent version with <code>mod_rewrite</code></td></tr>
+        <tr><td>Python (optional)</td><td>3.9+ — only needed for PDF pay stub parsing and Excel fallback</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Step-by-step</h3>
+
+    <p><strong>1. Place files</strong> — Drop the project into your web server root, e.g. <code>C:\xampp\htdocs\budjit\</code></p>
+
+    <p><strong>2. Create the database</strong></p>
+    <pre><code><span class="cm">-- In phpMyAdmin or MySQL shell:</span>
+CREATE DATABASE budjit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+<span class="cm">-- Then import config/schema.sql via phpMyAdmin Import tab</span></code></pre>
+
+    <p><strong>3. Configure</strong> — Edit <code>config/config.php</code>:</p>
+    <pre><code><span class="kw">define</span>(<span class="st">'BASE_URL'</span>, <span class="st">'http://localhost/budjit/public'</span>);
+<span class="kw">define</span>(<span class="st">'DB_HOST'</span>,  <span class="st">'localhost'</span>);
+<span class="kw">define</span>(<span class="st">'DB_NAME'</span>,  <span class="st">'budjit'</span>);
+<span class="kw">define</span>(<span class="st">'DB_USER'</span>,  <span class="st">'root'</span>);
+<span class="kw">define</span>(<span class="st">'DB_PASS'</span>,  <span class="st">''</span>);</code></pre>
+
+    <p><strong>4. Enable mod_rewrite</strong> — In <code>httpd.conf</code>, ensure <code>AllowOverride All</code> is set for the htdocs directory, and <code>mod_rewrite</code> is loaded. Restart Apache.</p>
+
+    <p><strong>5. Visit</strong> <code>http://localhost/budjit/public</code> and register the first admin account.</p>
+  </section>
+
+  <!-- ── ROUTER ────────────────────────────────────────────────── -->
+  <section class="section" id="router">
+    <h2>Router</h2>
+    <p>File: <code>core/router/Router.php</code></p>
+
+    <p>The router is a simple pattern-matching dispatcher. Routes are registered in <code>public/index.php</code> (and plugin <code>plugin.php</code> files) before <code>dispatch()</code> is called.</p>
+
+    <h3>Route registration</h3>
+    <pre><code><span class="nb">$router</span>-><span class="fn">get</span>(<span class="st">'/budgets'</span>,         <span class="st">'BudgetController@index'</span>);
+<span class="nb">$router</span>-><span class="fn">post</span>(<span class="st">'/budgets'</span>,        <span class="st">'BudgetController@store'</span>);
+<span class="nb">$router</span>-><span class="fn">get</span>(<span class="st">'/budgets/{id}'</span>,   <span class="st">'BudgetController@show'</span>); <span class="cm">// {id} becomes a param</span>
+<span class="nb">$router</span>-><span class="fn">any</span>(<span class="st">'/some-path'</span>,     <span class="st">'SomeController@handle'</span>); <span class="cm">// GET + POST</span></code></pre>
+
+    <h3>Dispatch flow</h3>
+    <p>On each request: <code>Router::dispatch()</code> normalises the URI (stripping the <code>BASE_URL</code> prefix for sub-directory installs), tries an exact match, then falls back to regex matching for parameterised routes like <code>/budgets/{id}</code>. Unmatched routes call <code>ErrorController@notFound</code> with a 404 status.</p>
+
+    <h3>Handler format</h3>
+    <p>Handlers are always <code>"ClassName@methodName"</code>. The router instantiates the class and calls the method, passing any route params as ordered arguments.</p>
+    <pre><code><span class="cm">// Route: /budgets/{id}/edit</span>
+<span class="kw">class</span> <span class="fn">BudgetController</span> <span class="kw">extends</span> <span class="nb">Controller</span> {
+    <span class="kw">public function</span> <span class="fn">edit</span>(<span class="nb">int</span> <span class="nb">$id</span>): <span class="nb">void</span> { <span class="cm">// $id injected from route</span>
+        <span class="nb">$budget</span> = (<span class="kw">new</span> <span class="fn">BudgetModel</span>())-><span class="fn">find</span>(<span class="nb">$id</span>);
+        <span class="nb">$this</span>-><span class="fn">render</span>(<span class="st">'budget/edit'</span>, [<span class="st">'budget'</span> => <span class="nb">$budget</span>]);
+    }
+}</code></pre>
+  </section>
+
+  <!-- ── DATABASE ──────────────────────────────────────────────── -->
+  <section class="section" id="database">
+    <h2>Database</h2>
+    <p>File: <code>core/database/Database.php</code></p>
+
+    <p><code>Database</code> is a <strong>singleton PDO wrapper</strong>. The single connection is created on first call and reused for the request lifetime.</p>
+
+    <pre><code><span class="nb">$pdo</span> = <span class="fn">Database</span>::<span class="fn">getInstance</span>(); <span class="cm">// PDO instance, always utf8mb4</span></code></pre>
+
+    <table>
+      <thead><tr><th>PDO setting</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td><code>ATTR_ERRMODE</code></td><td><code>ERRMODE_EXCEPTION</code> — all DB errors throw <code>PDOException</code></td></tr>
+        <tr><td><code>ATTR_DEFAULT_FETCH_MODE</code></td><td><code>FETCH_ASSOC</code> — rows are associative arrays</td></tr>
+        <tr><td><code>ATTR_EMULATE_PREPARES</code></td><td><code>false</code> — real prepared statements, no emulation</td></tr>
+        <tr><td>Charset</td><td><code>utf8mb4</code> with <code>utf8mb4_unicode_ci</code> collation</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <span class="icon">🔒</span>
+      <p>Never catch a <code>PDOException</code> just to swallow it silently. Always log via <code>error_log()</code> before re-throwing or returning a user-safe error.</p>
+    </div>
+  </section>
+
+  <!-- ── AUTH ──────────────────────────────────────────────────── -->
+  <section class="section" id="auth">
+    <h2>Auth &amp; Sessions</h2>
+    <p>File: <code>core/auth/Auth.php</code></p>
+
+    <p>All authentication state lives in the PHP session. The session is started once in <code>public/index.php</code> via <code>Auth::startSession()</code> before any output.</p>
+
+    <h3>Session payload</h3>
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>user_id</code></td><td><code>int</code></td><td>Primary key from <code>users</code> table</td></tr>
+        <tr><td><code>user_name</code></td><td><code>string</code></td><td>Full name (first + last)</td></tr>
+        <tr><td><code>user_role</code></td><td><code>int</code></td><td>Role ID: 1 = Admin, 2 = Parent, 3 = Viewer</td></tr>
+        <tr><td><code>logged_in</code></td><td><code>bool</code></td><td><code>true</code> when authenticated</td></tr>
+        <tr><td><code>login_at</code></td><td><code>int</code></td><td>Unix timestamp of login</td></tr>
+        <tr><td><code>csrf_token</code></td><td><code>string</code></td><td>64-char hex token for CSRF validation</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Common usage in controllers</h3>
+    <pre><code><span class="fn">Auth</span>::<span class="fn">requireLogin</span>();    <span class="cm">// redirects to /auth/login if not logged in</span>
+<span class="fn">Auth</span>::<span class="fn">requireAdmin</span>();    <span class="cm">// 403 if not admin</span>
+<span class="fn">Auth</span>::<span class="fn">requireWriteAccess</span>(); <span class="cm">// 403 if Viewer role</span>
+<span class="fn">Auth</span>::<span class="fn">verifyCsrf</span>();      <span class="cm">// 419 if CSRF token missing/wrong — call at top of every POST handler</span>
+
+<span class="nb">$user</span> = <span class="fn">Auth</span>::<span class="fn">user</span>();    <span class="cm">// ['id', 'name', 'role'] or null</span>
+<span class="nb">$id</span>   = <span class="fn">Auth</span>::<span class="fn">id</span>();      <span class="cm">// int|null</span></code></pre>
+
+    <h3>CSRF protection</h3>
+    <p>Every HTML form must include the CSRF hidden field. Every POST handler must verify it before processing.</p>
+    <pre><code><span class="cm">&lt;!-- In view template --&gt;</span>
+&lt;?= <span class="fn">Auth</span>::<span class="fn">csrfField</span>() ?&gt;
+
+<span class="cm">// In controller POST handler — first line after requireLogin/requireWriteAccess</span>
+<span class="fn">Auth</span>::<span class="fn">verifyCsrf</span>();</code></pre>
+  </section>
+
+  <!-- ── BASE MODEL ─────────────────────────────────────────────── -->
+  <section class="section" id="model">
+    <h2>Base Model</h2>
+    <p>File: <code>core/database/Model.php</code></p>
+
+    <p>All models extend <code>Model</code>. Subclasses declare a <code>$table</code> property and get CRUD methods for free.</p>
+
+    <pre><code><span class="kw">class</span> <span class="fn">BudgetModel</span> <span class="kw">extends</span> <span class="nb">Model</span> {
+    <span class="kw">protected string</span> <span class="nb">$table</span> = <span class="st">'budgets'</span>;
+    <span class="cm">// all base methods available immediately</span>
+}</code></pre>
+
+    <h3>Available methods</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>find(int $id)</code></td><td><code>?array</code></td><td>Row by primary key</td></tr>
+        <tr><td><code>findAll($col, $dir)</code></td><td><code>array</code></td><td>All rows, ordered</td></tr>
+        <tr><td><code>findWhere(array $conditions)</code></td><td><code>array</code></td><td>Rows matching all conditions</td></tr>
+        <tr><td><code>findOneWhere(array $conditions)</code></td><td><code>?array</code></td><td>First matching row</td></tr>
+        <tr><td><code>insert(array $data)</code></td><td><code>int</code></td><td>Inserts row, returns new ID</td></tr>
+        <tr><td><code>update(int $id, array $data)</code></td><td><code>bool</code></td><td>Updates row by PK</td></tr>
+        <tr><td><code>delete(int $id)</code></td><td><code>bool</code></td><td>Deletes row by PK</td></tr>
+        <tr><td><code>count(array $conditions)</code></td><td><code>int</code></td><td>Row count, optionally filtered</td></tr>
+        <tr><td><code>query(string $sql, array $params)</code></td><td><code>PDOStatement</code></td><td>Raw prepared query (protected)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout success">
+      <span class="icon">✅</span>
+      <p>All <code>findWhere</code> and <code>insert</code>/<code>update</code> calls go through prepared statements automatically. Never build SQL by concatenating user input.</p>
+    </div>
+  </section>
+
+  <!-- ── PLUGIN SYSTEM ─────────────────────────────────────────── -->
+  <section class="section" id="plugins">
+    <h2>Plugin System</h2>
+    <p>File: <code>core/plugins/PluginLoader.php</code></p>
+
+    <p>Plugins are self-contained PHP packages inside <code>/plugins/{slug}/</code>. Each has a <code>plugin.php</code> entry point that registers routes and hooks. They are loaded automatically on every request if enabled.</p>
+
+    <h3>Installed plugins</h3>
+    <div class="plugin-grid">
+      <div class="plugin-card">
+        <div class="name">💳 Financial Import</div>
+        <div class="slug">financial-import</div>
+        <div class="desc">Unified import pipeline. Ingests CSV/OFX bank statements and Excel files into expenses. Supersedes the older bank-import and excel-budget-import plugins.</div>
+      </div>
+      <div class="plugin-card">
+        <div class="name">🎯 Savings Goals</div>
+        <div class="slug">savings-goals</div>
+        <div class="desc">Track progress toward financial targets with contribution logging and visual progress bars.</div>
+      </div>
+      <div class="plugin-card">
+        <div class="name">🏋️ Debt Tracker</div>
+        <div class="slug">debt-tracker</div>
+        <div class="desc">Log debts, record payments, and track payoff progress with interest calculations.</div>
+      </div>
+      <div class="plugin-card">
+        <div class="name">🔁 Recurring Bills</div>
+        <div class="slug">recurring-bills</div>
+        <div class="desc">Track subscriptions and regular payments. Dashboard widget shows upcoming bills.</div>
+      </div>
+      <div class="plugin-card">
+        <div class="name">🗓️ Calendar Reminders</div>
+        <div class="slug">calendar-reminders</div>
+        <div class="desc">Set financial reminders tied to calendar dates. A cron job in <code>storage/cron/send_reminders.php</code> handles delivery.</div>
+      </div>
+      <div class="plugin-card">
+        <div class="name">🏦 Bank Import (legacy)</div>
+        <div class="slug">bank-import</div>
+        <div class="desc">Legacy Plaid-based bank sync. Routes now redirect to the financial-import plugin.</div>
+      </div>
+    </div>
+
+    <h3>Creating a new plugin</h3>
+    <pre><code><span class="cm">// 1. Create folder: plugins/my-feature/</span>
+<span class="cm">// 2. Create plugins/my-feature/plugin.php:</span>
+
+<span class="nb">&lt;?php</span>
+<span class="fn">defined</span>(<span class="st">'BUDJIT'</span>) <span class="kw">or</span> <span class="fn">die</span>;
+
+<span class="cm">// Register routes</span>
+<span class="nb">$router</span>-><span class="fn">get</span>(<span class="st">'/my-feature'</span>, <span class="st">'MyFeatureController@index'</span>);
+
+<span class="cm">// Register a dashboard widget</span>
+<span class="fn">PluginLoader</span>::<span class="fn">register</span>(<span class="st">'dashboard_widgets'</span>, <span class="kw">function</span>() {
+    <span class="fn">ob_start</span>();
+    <span class="kw">require</span> <span class="nb">PLUGIN_PATH</span> . <span class="st">'/my-feature/views/widget.php'</span>;
+    <span class="kw">return</span> <span class="fn">ob_get_clean</span>();
+});
+
+<span class="cm">// Register a sidebar nav link</span>
+<span class="fn">PluginLoader</span>::<span class="fn">register</span>(<span class="st">'nav_items'</span>, <span class="kw">function</span>(<span class="nb">$items</span>) {
+    <span class="nb">$items</span>[] = [
+        <span class="st">'label'</span> => <span class="st">'My Feature'</span>,
+        <span class="st">'url'</span>   => <span class="nb">BASE_URL</span> . <span class="st">'/my-feature'</span>,
+        <span class="st">'icon'</span>  => <span class="st">'ti-star'</span>,  <span class="cm">// Tabler icon class</span>
+        <span class="st">'match'</span> => <span class="st">'my-feature'</span>,
+    ];
+    <span class="kw">return</span> <span class="nb">$items</span>;
+});</code></pre>
+
+    <h3>Available hooks</h3>
+    <table>
+      <thead><tr><th>Hook</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>dashboard_widgets</code></td><td>collect</td><td>Return an HTML string to add a widget to the dashboard</td></tr>
+        <tr><td><code>nav_items</code></td><td>filter</td><td>Receive and return the <code>$items</code> array to add sidebar nav entries</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── ROUTE REFERENCE ───────────────────────────────────────── -->
+  <section class="section" id="routes">
+    <h2>Route Reference</h2>
+
+    <h3>Auth</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Handler</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/auth/login</code></td><td><code>AuthController@loginForm</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/auth/login</code></td><td><code>AuthController@login</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/auth/register</code></td><td><code>AuthController@registerForm</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/auth/register</code></td><td><code>AuthController@register</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/auth/logout</code></td><td><code>AuthController@logout</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Core pages</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Handler</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/</code> · <code>/dashboard</code></td><td><code>DashboardController@index</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/budgets</code></td><td><code>BudgetController@index</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/budgets/create</code></td><td><code>BudgetController@create</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/budgets</code></td><td><code>BudgetController@store</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/budgets/{id}</code></td><td><code>BudgetController@show</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/budgets/{id}/edit</code></td><td><code>BudgetController@edit</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/budgets/{id}/update</code></td><td><code>BudgetController@update</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/budgets/{id}/delete</code></td><td><code>BudgetController@delete</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/budgets/{id}/archive</code></td><td><code>BudgetController@archive</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/budgets/{id}/duplicate</code></td><td><code>BudgetController@duplicate</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/expenses</code></td><td><code>ExpenseController@index</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/expenses/{id}/delete</code></td><td><code>ExpenseController@delete</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/income</code></td><td><code>IncomeController@index</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/analytics</code></td><td><code>AnalyticsController@index</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/analytics/export</code></td><td><code>AnalyticsController@export</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/settings</code></td><td><code>SettingsController@index</code></td></tr>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/plugins</code></td><td><code>PluginController@index</code></td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/plugins/toggle</code></td><td><code>PluginController@toggle</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>API (JSON)</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill pill-get">GET</span></td><td><code>/api/categories</code></td><td>List all categories as JSON</td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/api/categories</code></td><td>Create category</td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/api/categories/reorder</code></td><td>Drag-to-reorder sort update</td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/api/categories/{id}/update</code></td><td>Edit category name/icon/color</td></tr>
+        <tr><td><span class="pill pill-post">POST</span></td><td><code>/api/categories/{id}/delete</code></td><td>Delete category</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── CONTROLLERS ───────────────────────────────────────────── -->
+  <section class="section" id="controllers">
+    <h2>Controllers</h2>
+    <p>All controllers extend <code>core/router/Controller.php</code> which provides render, redirect, flash, and JSON helpers.</p>
+
+    <table>
+      <thead><tr><th>Controller</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr><td><code>AuthController</code></td><td>Login, registration, logout. Hashes passwords with <code>password_hash()</code>, verifies with <code>password_verify()</code>.</td></tr>
+        <tr><td><code>DashboardController</code></td><td>Aggregates summary data from multiple models; collects plugin widgets via <code>PluginLoader::collect('dashboard_widgets')</code>.</td></tr>
+        <tr><td><code>BudgetController</code></td><td>Full CRUD for budgets plus archive and duplicate actions.</td></tr>
+        <tr><td><code>ExpenseController</code></td><td>CRUD for expenses, <code>markPaid</code> toggle.</td></tr>
+        <tr><td><code>IncomeController</code></td><td>Manages income entries and income sources.</td></tr>
+        <tr><td><code>CategoryController</code></td><td>API-style JSON responses for managing budget categories.</td></tr>
+        <tr><td><code>AnalyticsController</code></td><td>Aggregation queries; <code>export</code> action returns CSV.</td></tr>
+        <tr><td><code>SettingsController</code></td><td>Tabbed settings pages: general, appearance, profile, password, users.</td></tr>
+        <tr><td><code>PluginController</code></td><td>Admin-only plugin enable/disable; calls <code>PluginLoader::enable()</code> / <code>disable()</code>.</td></tr>
+        <tr><td><code>FinancialImportController</code></td><td>Unified import flow — file upload, parsing, preview, confirmation.</td></tr>
+        <tr><td><code>PaystubController</code></td><td>Calls <code>ChimePdfParser</code> (Python sidecar) to extract income from PDF pay stubs.</td></tr>
+        <tr><td><code>ErrorController</code></td><td>Renders 404 pages.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Base Controller helpers</h3>
+    <pre><code><span class="cm">// Render a view inside the main layout</span>
+<span class="nb">$this</span>-><span class="fn">render</span>(<span class="st">'budget/show'</span>, [<span class="st">'budget'</span> => <span class="nb">$budget</span>]);
+
+<span class="cm">// Redirect</span>
+<span class="nb">$this</span>-><span class="fn">redirect</span>(<span class="st">'/budgets'</span>);
+
+<span class="cm">// Flash message (available on next request)</span>
+<span class="nb">$this</span>-><span class="fn">flash</span>(<span class="st">'success'</span>, <span class="st">'Budget created!'</span>);
+<span class="nb">$this</span>-><span class="fn">flash</span>(<span class="st">'error'</span>,   <span class="st">'Something went wrong.'</span>);
+
+<span class="cm">// JSON response (exits)</span>
+<span class="nb">$this</span>-><span class="fn">json</span>([<span class="st">'ok'</span> => <span class="kw">true</span>, <span class="st">'id'</span> => <span class="nb">$newId</span>]);</code></pre>
+  </section>
+
+  <!-- ── VIEWS ─────────────────────────────────────────────────── -->
+  <section class="section" id="views">
+    <h2>Views &amp; Layouts</h2>
+
+    <p>Views are plain PHP files in <code>app/views/</code>. The base controller's <code>render()</code> method captures the view into <code>$content</code> and injects it into the layout.</p>
+
+    <h3>Layouts</h3>
+    <table>
+      <thead><tr><th>Layout</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><code>layouts/main.php</code></td><td>All authenticated pages. Renders the sidebar, flash messages, and plugin nav items.</td></tr>
+        <tr><td><code>layouts/auth.php</code></td><td>Login and register pages (no sidebar).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Naming convention</h3>
+    <p>Views follow the pattern <code>feature/action.php</code> — e.g. <code>budget/create.php</code>, <code>budget/edit.php</code>, <code>budget/show.php</code>. The render call omits the <code>.php</code> extension.</p>
+
+    <h3>Icons</h3>
+    <p>Icons use <strong>Tabler Icons</strong> (webfont, loaded from CDN). Use class <code>ti ti-{icon-name}</code>. Browse icons at <a href="https://tabler.io/icons" target="_blank">tabler.io/icons</a>.</p>
+  </section>
+
+  <!-- ── FRONTEND ──────────────────────────────────────────────── -->
+  <section class="section" id="frontend">
+    <h2>Frontend</h2>
+
+    <p>There is no frontend build step. All CSS and JS are hand-written vanilla files.</p>
+
+    <table>
+      <thead><tr><th>File</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>public/assets/css/app.css</code></td><td>All application styles. Uses CSS custom properties (<code>--blue</code>, <code>--green</code>, etc.) that are overridden per-user from Settings → Appearance.</td></tr>
+        <tr><td><code>public/assets/js/app.js</code></td><td>Dashboard drag-to-reorder, inline editing, AJAX form handlers, toast notifications, and theme switching.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Theming</h3>
+    <p>Dark/light mode is driven by the <code>data-theme="dark"</code> attribute on <code>&lt;html&gt;</code>. The selected theme is persisted in <code>localStorage</code> and applied before first paint to avoid flash-of-wrong-theme. Primary and accent colours are loaded server-side as CSS variable overrides in the <code>&lt;head&gt;</code> from per-user preferences.</p>
+
+    <h3>Progressive Web App</h3>
+    <p>A minimal service worker (<code>public/sw.js</code>) is registered, enabling installability on mobile browsers.</p>
+  </section>
+
+  <!-- ── DATABASE SCHEMA ───────────────────────────────────────── -->
+  <section class="section" id="schema">
+    <h2>Database Schema</h2>
+
+    <p>Import <code>config/schema.sql</code> to create all tables. Additive migrations are in <code>config/migration_*.sql</code>.</p>
+
+    <table>
+      <thead><tr><th>Table</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>roles</code></td><td>Three rows: admin (1), parent (2), viewer (3). Seed data, do not modify.</td></tr>
+        <tr><td><code>users</code></td><td>Registered accounts. Passwords stored as bcrypt hashes (<code>password_hash</code>).</td></tr>
+        <tr><td><code>sessions</code></td><td>Optional server-side session store (not used by default; PHP file sessions are active).</td></tr>
+        <tr><td><code>settings</code></td><td>Global key-value app settings (currency, theme, app name, etc.).</td></tr>
+        <tr><td><code>user_preferences</code></td><td>Per-user key-value overrides (custom colours, etc.).</td></tr>
+        <tr><td><code>budget_categories</code></td><td>Expense categories. <code>user_id = NULL</code> → system default; <code>user_id set</code> → user-created.</td></tr>
+        <tr><td><code>budgets</code></td><td>Budget envelopes with a date range, period type, total income and total budget.</td></tr>
+        <tr><td><code>budget_items</code></td><td>Category allocations within a budget (many budget_items per budget).</td></tr>
+        <tr><td><code>income_sources</code></td><td>Reusable income source definitions (e.g. "Main Salary", "Freelance").</td></tr>
+        <tr><td><code>income_entries</code></td><td>Actual income records, optionally linked to a budget and/or source.</td></tr>
+        <tr><td><code>expenses</code></td><td>Individual expense records, linked to a category and optionally a budget.</td></tr>
+        <tr><td><code>recurring_expenses</code></td><td>Templates for auto-generating expenses on a schedule.</td></tr>
+        <tr><td><code>plugins</code></td><td>Plugin registry — slug, enabled/disabled state.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Plugin migrations add their own tables (e.g. <code>savings_goals</code>, <code>debts</code>, <code>recurring_bills</code>) and are included in their respective <code>schema.sql</code> or <code>config/migration_*.sql</code> files.</p>
+  </section>
+
+  <!-- ── ROLES ─────────────────────────────────────────────────── -->
+  <section class="section" id="roles">
+    <h2>Roles &amp; Permissions</h2>
+
+    <table>
+      <thead><tr><th>Role</th><th>ID</th><th>Capabilities</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="pill pill-admin">Admin</span></td>
+          <td>1</td>
+          <td>Full access including plugin management, user management, and all settings.</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-parent">Parent / User</span></td>
+          <td>2</td>
+          <td>Full read/write access to financial data. Cannot manage plugins or other users.</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-viewer">Viewer</span></td>
+          <td>3</td>
+          <td>Read-only. Any controller action that creates/updates/deletes data must call <code>Auth::requireWriteAccess()</code> at the top, which returns 403 for Viewers.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Guard call order in controllers</h3>
+    <pre><code><span class="kw">public function</span> <span class="fn">store</span>(): <span class="nb">void</span> {
+    <span class="fn">Auth</span>::<span class="fn">requireLogin</span>();        <span class="cm">// 1. must be logged in</span>
+    <span class="fn">Auth</span>::<span class="fn">requireWriteAccess</span>();  <span class="cm">// 2. must not be Viewer</span>
+    <span class="fn">Auth</span>::<span class="fn">verifyCsrf</span>();         <span class="cm">// 3. CSRF token valid</span>
+    <span class="cm">// ... handle POST data</span>
+}</code></pre>
+  </section>
+
+  <!-- ── CONFIGURATION ─────────────────────────────────────────── -->
+  <section class="section" id="config">
+    <h2>Configuration</h2>
+    <p>File: <code>config/config.php</code></p>
+
+    <table>
+      <thead><tr><th>Constant</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>APP_NAME</code></td><td><code>'Budjit'</code></td><td>Displayed in the page title and sidebar</td></tr>
+        <tr><td><code>APP_VERSION</code></td><td><code>'1.0.0'</code></td><td>Application version string</td></tr>
+        <tr><td><code>APP_ENV</code></td><td><code>'development'</code></td><td>Set to <code>'production'</code> to suppress error output</td></tr>
+        <tr><td><code>BASE_URL</code></td><td><code>'http://localhost/budjit/public'</code></td><td>No trailing slash. Used for all generated links.</td></tr>
+        <tr><td><code>ROOT_PATH</code></td><td>auto</td><td>Absolute path to project root</td></tr>
+        <tr><td><code>DB_HOST</code> / <code>DB_PORT</code></td><td><code>'localhost'</code> / <code>3306</code></td><td>MySQL host and port</td></tr>
+        <tr><td><code>DB_NAME</code></td><td><code>'budjit'</code></td><td>Database name</td></tr>
+        <tr><td><code>DB_USER</code> / <code>DB_PASS</code></td><td><code>'root'</code> / <code>''</code></td><td>Change for production</td></tr>
+        <tr><td><code>PLAID_CLIENT_ID</code></td><td>—</td><td>Plaid API client ID</td></tr>
+        <tr><td><code>PLAID_SECRET</code></td><td>—</td><td>Plaid secret key — never commit real value</td></tr>
+        <tr><td><code>PLAID_ENV</code></td><td><code>'production'</code></td><td><code>'sandbox'</code> for testing</td></tr>
+        <tr><td><code>PLAID_ENCRYPTION_KEY</code></td><td>—</td><td>Base64 AES-256 key for token storage — generate with: <code>php -r "echo base64_encode(random_bytes(32));"</code></td></tr>
+        <tr><td><code>PLAID_INITIAL_DAYS</code></td><td><code>180</code></td><td>Days of history to pull on first sync</td></tr>
+        <tr><td><code>SESSION_LIFETIME</code></td><td><code>7200</code></td><td>Session TTL in seconds (2 hours)</td></tr>
+        <tr><td><code>CSRF_TOKEN_LENGTH</code></td><td><code>32</code></td><td>Bytes of entropy for CSRF token</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── SECURITY ──────────────────────────────────────────────── -->
+  <section class="section" id="security">
+    <h2>Security</h2>
+
+    <table>
+      <thead><tr><th>Control</th><th>Implementation</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Password hashing</strong></td><td><code>password_hash()</code> with <code>PASSWORD_BCRYPT</code>; verified with <code>password_verify()</code></td></tr>
+        <tr><td><strong>SQL injection</strong></td><td>All queries via PDO prepared statements. Base Model never interpolates user input into SQL.</td></tr>
+        <tr><td><strong>XSS</strong></td><td>All output in views wrapped with <code>htmlspecialchars()</code>. Never echo raw user content.</td></tr>
+        <tr><td><strong>CSRF</strong></td><td>Every POST form includes <code>Auth::csrfField()</code>; every POST handler calls <code>Auth::verifyCsrf()</code> first.</td></tr>
+        <tr><td><strong>Session fixation</strong></td><td><code>session_regenerate_id(true)</code> on every successful login</td></tr>
+        <tr><td><strong>Session cookies</strong></td><td><code>HttpOnly</code>, <code>SameSite=Strict</code>, <code>Secure</code> (when HTTPS)</td></tr>
+        <tr><td><strong>Plaid token storage</strong></td><td>Access tokens encrypted at rest with AES-256 using <code>PLAID_ENCRYPTION_KEY</code></td></tr>
+        <tr><td><strong>Error disclosure</strong></td><td>Set <code>APP_ENV='production'</code> to suppress all PHP errors from output</td></tr>
+        <tr><td><strong>Directory access</strong></td><td><code>/app</code>, <code>/core</code>, <code>/config</code>, <code>/plugins</code> are above the web root and never served by Apache</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <span class="icon">🚨</span>
+      <p><strong>Before any production or network deployment:</strong> rotate <code>PLAID_SECRET</code> and <code>PLAID_ENCRYPTION_KEY</code>, set a strong <code>DB_PASS</code>, set <code>APP_ENV='production'</code>, and enforce HTTPS.</p>
+    </div>
+  </section>
+
+  <!-- ── ADDING FEATURES ───────────────────────────────────────── -->
+  <section class="section" id="adding">
+    <h2>Adding Features</h2>
+
+    <h3>Adding a core page (non-plugin)</h3>
+    <p>1. Create <code>app/controllers/MyController.php</code> extending <code>Controller</code>.<br>
+    2. Create <code>app/models/MyModel.php</code> extending <code>Model</code> with <code>$table</code> set.<br>
+    3. Create view(s) in <code>app/views/my-feature/</code>.<br>
+    4. Register routes in <code>public/index.php</code> before <code>PluginLoader::boot()</code>.<br>
+    5. Add a nav item in <code>app/views/layouts/main.php</code> if needed.</p>
+
+    <h3>Adding a plugin feature</h3>
+    <p>1. Create <code>plugins/my-plugin/plugin.php</code> — register routes and hooks.<br>
+    2. Add controller and model files in <code>app/controllers/</code> and <code>app/models/</code> (the autoloader finds them there).<br>
+    3. Create views in <code>plugins/my-plugin/views/</code>.<br>
+    4. If new DB tables are needed, create <code>plugins/my-plugin/schema.sql</code> and import it.<br>
+    5. Add the plugin slug to <code>config/plugins.php</code>.</p>
+
+    <div class="callout info">
+      <span class="icon">💡</span>
+      <p>Plugin controllers and models live in <code>app/controllers/</code> and <code>app/models/</code> respectively — the autoloader searches those paths. Only the <code>plugin.php</code> entry point and views live inside <code>/plugins/{slug}/</code>.</p>
+    </div>
+
+    <h3>Coding standards</h3>
+    <ul style="margin: 12px 0 0 20px; color: #c8d0de; font-size: 14.5px; line-height: 2;">
+      <li>Always call <code>Auth::requireLogin()</code> (and write-access / admin guards) as the <em>first</em> line of any controller method.</li>
+      <li>Call <code>Auth::verifyCsrf()</code> at the top of every POST handler.</li>
+      <li>Use prepared statements via the base <code>Model</code> methods. Never concatenate user input into SQL.</li>
+      <li>Escape all output with <code>htmlspecialchars()</code>.</li>
+      <li>Use <code>password_hash()</code> / <code>password_verify()</code> for all passwords — never MD5/SHA1.</li>
+      <li>Log errors with <code>error_log()</code>; never display raw exception messages to users in production.</li>
+    </ul>
+  </section>
+
+</main>
+
+<script>
+  // Active nav highlight on scroll
+  const sections = document.querySelectorAll('section[id]');
+  const links    = document.querySelectorAll('.sidebar a');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.sidebar a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

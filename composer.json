@@ -1,0 +1,12 @@
+{
+    "name": "budjit/budjit",
+    "description": "Budjit personal finance app",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "minishlink/web-push": "^9.0"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
